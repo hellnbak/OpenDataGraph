@@ -1,0 +1,18 @@
+services:
+  opendatagraph:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      ODG_DATABASE_URL: sqlite:////data/opendatagraph.db
+      ODG_AUTO_SEED_DEMO: "true"
+      ODG_CLASSIFICATION_MODE: hybrid
+      ODG_OLLAMA_URL: http://host.docker.internal:11434
+      ODG_OLLAMA_MODEL: qwen2.5:3b
+    volumes:
+      - odg-data:/data
+      - ~/.aws:/root/.aws:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+volumes:
+  odg-data:

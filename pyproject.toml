@@ -1,0 +1,7 @@
+[tool.ruff]
+line-length = 140
+exclude = [".venv"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
