@@ -1,147 +1,104 @@
 # OpenDataGraph
 
-**The open data intelligence layer for enterprise AI.**
+**Open-source data intelligence and policy context for enterprise AI.**
 
-OpenDataGraph catalogs enterprise data, enriches it with sensitivity and business context, measures age and staleness, recommends lifecycle actions, and exposes policy decisions that AI gateways and agents can query before using data.
+OpenDataGraph inventories enterprise data, adds explainable sensitivity and lifecycle context, registers AI agents, and returns auditable decisions before an AI system uses data.
 
-> OpenDataGraph is a working project name. Perform naming and trademark review before a public launch.
+> **Release:** v1.0.0-RC1 Phase 1. This is a testable release candidate, not a production certification.
 
-## What the V1 demonstrates
+## Phase 1 capabilities
 
-- A unified data inventory across representative S3, Google Drive, Microsoft 365, GitHub, and database assets
-- A live AWS S3 metadata connector using the local AWS credential chain
-- Explainable classification using deterministic signals with optional local Ollama inference
-- First-class lifecycle intelligence: created, modified, last accessed, age, inactivity, stale score, lifecycle state, and retention recommendations
-- A policy API that returns `allow`, `conditional`, or `deny` for AI use
-- A polished dashboard designed for demos and screenshots
-- Local-first operation with SQLite and Docker Compose
+- Enterprise Demo Mode with synthetic Financial Services, Healthcare, SaaS, and diversified-enterprise profiles
+- Normalized data inventory with ownership, source, classification, age, inactivity, stale score, retention recommendation, encryption, and exposure context
+- Explainable deterministic classification with optional local Ollama inference
+- AI Agent Registry
+- Policy Decision API returning `allow`, `conditional`, or `deny`, reasons, controls, risk score, version, expiry, and an audit record
+- Interactive policy playground and screenshot-ready dashboard
+- Live metadata connectors for AWS S3 and Google Drive
+- MCP server exposing search, asset lookup, agent listing, summary, and authorization tools
+- PostgreSQL-backed Docker deployment; SQLite remains available for lightweight development
+- OpenSearch service included for Phase 1 search/integration testing
+- Automated tests and GitHub Actions
 
-## Run the demo
-
-### Docker
+## Five-minute demo
 
 ```bash
-git clone https://github.com/YOUR-ORG/opendatagraph.git
-cd opendatagraph
+git clone https://github.com/hellnbak/OpenDataGraph.git
+cd OpenDataGraph
 docker compose up --build
 ```
 
-Open `http://localhost:8080`.
+Open:
 
-The application automatically loads realistic synthetic enterprise data. No cloud credentials or model downloads are required for the demo.
+- Dashboard: `http://localhost:8080`
+- OpenAPI: `http://localhost:8080/docs`
+- Health: `http://localhost:8080/health`
+- OpenSearch: `http://localhost:9200`
 
-### Python
+Demo data is synthetic. No cloud account or model is required.
+
+## Native development
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env
 uvicorn app.main:app --reload --port 8080
 ```
 
-## Optional local AI model
+The default local database is SQLite unless `ODG_DATABASE_URL` is set.
 
-OpenDataGraph works without a model by using its explainable classification engine. To add local model inference:
-
-```bash
-ollama pull qwen2.5:3b
-ollama serve
-```
-
-Set `ODG_CLASSIFICATION_MODE=hybrid` or `ollama`. If Ollama is unavailable, hybrid mode safely falls back to deterministic classification.
-
-## Scan an AWS S3 bucket
-
-The Docker configuration mounts `~/.aws` read-only. Use a least-privilege role or profile with `s3:ListBucket` and `s3:GetObject`/`s3:GetObjectAttributes` for the intended bucket.
-
-```bash
-curl -X POST http://localhost:8080/api/v1/connectors/s3/scan \
-  -H 'Content-Type: application/json' \
-  -d '{"bucket":"my-bucket","prefix":"","max_objects":100}'
-```
-
-OpenDataGraph retrieves object metadata and headers; V1 does not download object bodies.
-
-## Policy API
+## Policy example
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/policy/evaluate \
   -H 'Content-Type: application/json' \
-  -d '{"asset_id":2,"destination":"openai","action":"send","actor":"demo-agent"}'
+  -d '{
+    "asset_id": 1,
+    "agent_key": "customer-support-copilot",
+    "destination": "openai",
+    "purpose": "summarization",
+    "action": "send"
+  }'
 ```
 
-Example response:
+## Connectors
 
-```json
-{
-  "decision": "deny",
-  "asset_id": 2,
-  "destination": "openai",
-  "action": "send",
-  "reason": "Restricted data cannot be sent to an unapproved external AI destination.",
-  "controls": ["audit-log", "identity-context", "private-model-only", "redaction-required"],
-  "confidence": 0.91
-}
+AWS S3 uses the standard AWS credential chain. Google Drive supports service accounts and Workspace domain-wide delegation. Both connectors are metadata-first in this release. See [`docs/connectors`](docs/connectors/).
+
+## MCP
+
+```bash
+ODG_API_URL=http://localhost:8080 python mcp_server.py
 ```
 
-## Architecture
+See [docs/MCP_SERVER.md](docs/MCP_SERVER.md).
 
-```text
-Enterprise Sources
-  └─ Connector adapters
-       └─ Normalized asset model
-            ├─ Explainable classification
-            ├─ Lifecycle and retention scoring
-            ├─ AI-access context
-            └─ REST policy API
-                 ├─ AI gateways
-                 ├─ Agents and RAG systems
-                 ├─ DLP platforms
-                 └─ Governance workflows
-```
+## Documentation
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md), and [docs/ROADMAP.md](docs/ROADMAP.md).
+- [Architecture](docs/ARCHITECTURE.md)
+- [Demo guide](docs/DEMO_GUIDE.md)
+- [Enterprise Demo Mode](docs/ENTERPRISE_DEMO.md)
+- [Connectors](docs/CONNECTORS.md)
+- [API guide](docs/api/README.md)
+- [Deployment](docs/deployment/README.md)
+- [Development](docs/development/README.md)
+- [Security](SECURITY.md)
+- [Contributing](CONTRIBUTING.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Release notes](RELEASE_NOTES.md)
 
-## API documentation
+## Safety boundaries
 
-Interactive OpenAPI documentation is available at `http://localhost:8080/docs`.
-
-## Current limitations
-
-This is an intentionally focused V1. Google Drive, Microsoft 365, GitHub, and database records in the demo are synthetic; their production connectors are interfaces planned for the next milestones. Last-access timestamps are not uniformly available from every source and should be treated as source-dependent evidence. Retention recommendations are advisory and do not delete data.
-
-## Security posture
-
-- No destructive lifecycle actions
-- No object-content download in the S3 connector
-- Local inference supported
-- Credentials are never stored by the application
-- Synthetic demo data only
-- Policy decisions include a reason and confidence value
-
-See [SECURITY.md](SECURITY.md) before exposing the service outside a local development environment.
+- No automatic deletion or archival
+- No credentials stored in the catalog
+- Metadata-first scanning by default
+- Google Drive content is not downloaded in Phase 1
+- S3 object bodies are not downloaded in Phase 1
+- Lifecycle actions are recommendations only
+- Policy decisions are advisory until integrated into an enforcing gateway
 
 ## License
 
-Apache License 2.0. A dual-license or source-available commercial strategy can be evaluated before the first public release.
-
-## Enterprise Demo Mode
-
-Select **Enterprise Demo Mode** from the dashboard to generate one of four fully synthetic environments:
-
-- Financial Services
-- Healthcare
-- B2B SaaS
-- Fortune 500 / diversified enterprise
-
-Each profile creates 80–600 interactive sample records. Weighted records represent an enterprise estate ranging from roughly 87,000 to 1.2 million assets, so the dashboard presents credible scale without overwhelming a laptop. Profiles include industry-specific filenames, business domains, source distributions, data ages, ownership, sensitivity, lifecycle recommendations, connector health, AI access decisions, and estimated storage savings.
-
-The data is deterministic for a given profile, sample count, and seed. It contains no real customer, employee, patient, credential, or company information.
-
-API example:
-
-```bash
-curl -X POST http://localhost:8080/api/v1/demo/generate \
-  -H 'Content-Type: application/json' \
-  -d '{"profile":"financial-services","samples":240,"seed":41}'
-```
+Apache License 2.0. Review the project name, trademark posture, and long-term commercial licensing strategy before broad public promotion.

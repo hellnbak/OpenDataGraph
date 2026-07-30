@@ -11,14 +11,17 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from connectors.s3 import scan_bucket
+from connectors.gdrive import scan_drive
 from .classification import classify, heuristic_classify
 from .config import settings
 from .database import Base, SessionLocal, engine, get_db
 from .demo_data import DEMO_ASSETS
 from .enterprise_demo import PROFILES, generate_enterprise_assets, profile_catalog, represented_count
 from .lifecycle import calculate_lifecycle
-from .models import DataAsset
-from .schemas import AssetOut, DemoGenerateRequest, PolicyDecision, PolicyRequest, S3ScanRequest
+from .agents import DEMO_AGENTS
+from .services.policy import audit as audit_decision, evaluate as evaluate_decision
+from .models import AIAgent, DataAsset, DecisionAudit
+from .schemas import AgentCreate, AgentOut, AssetOut, DemoGenerateRequest, GDriveScanRequest, PolicyDecision, PolicyRequest, S3ScanRequest
 
 
 async def enrich_asset(asset: DataAsset, deterministic: bool = False) -> None:
@@ -54,8 +57,12 @@ async def seed_demo() -> None:
         if db.scalar(select(func.count(DataAsset.id))) == 0:
             for item in DEMO_ASSETS:
                 asset = DataAsset(**item)
-                await enrich_asset(asset)
+                await enrich_asset(asset, deterministic=True)
                 db.add(asset)
+            db.commit()
+        if db.scalar(select(func.count(AIAgent.id))) == 0:
+            for item in DEMO_AGENTS:
+                db.add(AIAgent(**item))
             db.commit()
     finally:
         db.close()
@@ -69,7 +76,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="1.0.0-rc1", lifespan=lifespan)
 BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
@@ -82,7 +89,7 @@ def dashboard(request: Request):
 
 @app.get("/health")
 def health(db: Session = Depends(get_db)):
-    return {"ok": True, "version": "0.1.0", "assets": db.scalar(select(func.count(DataAsset.id)))}
+    return {"ok": True, "version": "1.0.0-rc1", "assets": db.scalar(select(func.count(DataAsset.id)))}
 
 
 @app.get("/api/v1/assets", response_model=list[AssetOut])
@@ -152,29 +159,30 @@ def summary(db: Session = Depends(get_db)):
     }
 
 
+@app.get("/api/v1/agents", response_model=list[AgentOut])
+def list_agents(db: Session = Depends(get_db)):
+    return list(db.scalars(select(AIAgent).order_by(AIAgent.risk_level.desc(), AIAgent.name)).all())
+
+@app.post("/api/v1/agents", response_model=AgentOut)
+def create_agent(req: AgentCreate, db: Session = Depends(get_db)):
+    if db.scalar(select(AIAgent).where(AIAgent.key == req.key)):
+        raise HTTPException(409, "Agent key already exists")
+    agent=AIAgent(**req.model_dump()); db.add(agent); db.commit(); db.refresh(agent); return agent
+
+@app.get("/api/v1/policy/audit")
+def policy_audit(limit: int = Query(default=50, ge=1, le=500), db: Session = Depends(get_db)):
+    rows=list(db.scalars(select(DecisionAudit).order_by(DecisionAudit.created_at.desc()).limit(limit)).all())
+    return [{"id":r.id,"created_at":r.created_at,"agent_key":r.agent_key,"asset_id":r.asset_id,"action":r.action,"destination":r.destination,"purpose":r.purpose,"decision":r.decision,"risk_score":r.risk_score,"policy_version":r.policy_version,"reasons":json.loads(r.reasons_json),"controls":json.loads(r.controls_json)} for r in rows]
+
 @app.post("/api/v1/policy/evaluate", response_model=PolicyDecision)
 def evaluate_policy(req: PolicyRequest, db: Session = Depends(get_db)):
-    asset = db.get(DataAsset, req.asset_id)
-    if not asset:
-        raise HTTPException(404, "Asset not found")
-    external = req.destination.lower() not in {"internal-rag", "private-model", "bedrock-private"}
-    controls = ["audit-log", "identity-context"]
-    if asset.ai_access == "Deny":
-        decision = "deny"
-        reason = asset.ai_access_reason
-    elif asset.sensitivity == "Restricted" and external:
-        decision = "deny"
-        reason = "Restricted data cannot be sent to an unapproved external AI destination."
-        controls += ["private-model-only", "redaction-required"]
-    elif asset.sensitivity in {"Restricted", "Confidential"}:
-        decision = "conditional"
-        reason = asset.ai_access_reason
-        controls += ["no-training", "redaction", "approved-destination"]
-    else:
-        decision = "allow"
-        reason = asset.ai_access_reason
-        controls += ["standard-retention"]
-    return PolicyDecision(decision=decision, asset_id=asset.id, destination=req.destination, action=req.action, reason=reason, controls=controls, confidence=asset.classification_confidence)
+    asset=db.get(DataAsset,req.asset_id)
+    if not asset: raise HTTPException(404,"Asset not found")
+    agent=db.scalar(select(AIAgent).where(AIAgent.key==req.agent_key))
+    if not agent: raise HTTPException(404,"AI agent not found")
+    result=evaluate_decision(agent,asset,req.destination,req.action,req.purpose)
+    audit_decision(db,req,result)
+    return PolicyDecision(asset_id=asset.id,agent_key=agent.key,destination=req.destination,action=req.action,purpose=req.purpose,**result)
 
 
 @app.post("/api/v1/connectors/s3/scan")
@@ -201,6 +209,25 @@ async def scan_s3(req: S3ScanRequest, db: Session = Depends(get_db)):
         await enrich_asset(asset)
     db.commit()
     return {"ok": True, "bucket": req.bucket, "imported": imported, "updated": updated}
+
+
+@app.post("/api/v1/connectors/google-drive/scan")
+async def scan_google_drive(req: GDriveScanRequest, db: Session = Depends(get_db)):
+    imported=updated=0
+    try: records=list(scan_drive(req.credentials_file,req.impersonate_user,req.drive_id,req.max_files))
+    except Exception as exc: raise HTTPException(400,f"Google Drive scan failed: {exc}") from exc
+    for record in records:
+        existing=db.scalar(select(DataAsset).where(DataAsset.external_id==record["external_id"]))
+        metadata=record.pop("metadata")
+        if existing:
+            asset=existing
+            for key,value in record.items(): setattr(asset,key,value)
+            asset.metadata_json=json.dumps(metadata); asset.last_seen_at=datetime.utcnow(); updated+=1
+        else:
+            asset=DataAsset(**record,metadata_json=json.dumps(metadata)); db.add(asset); imported+=1
+        await enrich_asset(asset)
+    db.commit()
+    return {"ok":True,"imported":imported,"updated":updated,"source":"google-drive"}
 
 
 @app.post("/api/v1/demo/reset")

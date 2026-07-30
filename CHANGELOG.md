@@ -18,3 +18,10 @@
 - One-click industry profile generation and sample-size controls.
 - AI readiness, estimated storage savings, source coverage, connector health, and priority risk panels.
 - Enterprise demo API endpoints and documentation.
+
+## 0.2.0 - AI Intelligence Platform
+- Added explainable real-time AI policy decisions with risk scores, required controls, TTLs, policy versioning, and audit records.
+- Added AI agent registry with owners, purposes, sensitivity ceilings, approved destinations, frameworks, and risk levels.
+- Expanded the dashboard into an interactive policy playground and agent registry.
+- Added production-oriented AWS S3 and Google Drive metadata connectors.
+- Added a Model Context Protocol server exposing catalog, agent, summary, and authorization tools.
