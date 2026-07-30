@@ -19,4 +19,4 @@
 
 ## Demo caveats
 
-State clearly that non-S3 connectors use synthetic records in V1 and that lifecycle actions are recommendations only. Do not imply that last-access evidence exists for every storage provider.
+State clearly that Enterprise Demo Mode uses synthetic records and that lifecycle actions are recommendations only. Live connector scans are separate from generated demo data. Do not imply that last-access evidence exists for every storage provider.

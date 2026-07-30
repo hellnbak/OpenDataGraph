@@ -2,21 +2,29 @@
 
 ## Design goals
 
-OpenDataGraph is API-first, cloud-neutral, model-agnostic, explainable, and safe by default. It is intended to enrich existing security and governance controls rather than replace every catalog, DLP, or storage platform.
+OpenDataGraph is API-first, cloud-neutral, model-agnostic, explainable, and safe by default. It enriches existing security and governance controls rather than replacing storage platforms, identity providers, or enterprise enforcement points.
 
-## V1 components
+## Components
 
-1. **Connector layer** — discovers source metadata and maps it to a normalized asset record. AWS S3 is the first live adapter.
-2. **Normalized catalog** — stores source identity, ownership, size, timestamps, security metadata, classifications, and lifecycle findings.
-3. **Classification engine** — evaluates deterministic metadata indicators and optionally calls a locally hosted Ollama model. Hybrid mode falls back safely.
-4. **Lifecycle engine** — computes age, inactivity, stale score, lifecycle state, and advisory retention actions.
-5. **Policy decision point** — evaluates whether an asset can be sent, summarized, embedded, or used for training at a named AI destination.
-6. **Dashboard and API** — gives humans a clear demo experience and allows AI gateways to consume the same intelligence programmatically.
+1. **Connector SDK** discovers source metadata and emits normalized `AssetRecord` objects in cursor-aware `ScanBatch` results.
+2. **Connector ingestion** stores assets, run status, counts, errors, review candidates, and source relationships.
+3. **Catalog** stores source identity, ownership, timestamps, security metadata, classification, lifecycle, and AI access context.
+4. **Classification** combines deterministic metadata and sampled-content indicators with optional local-model enrichment.
+5. **Review workflow** captures low-confidence classifications and records analyst approvals or corrections.
+6. **Policy engine** loads YAML definitions and combines matched policy outcomes with agent, destination, and asset context.
+7. **Identity boundary** maps API keys to roles and exposes OIDC configuration for a validating gateway or future provider integration.
+8. **AI usage ingestion** records observed agent activity with an idempotent event ID and correlated policy result.
+9. **Relationship layer** stores directed graph edges in the relational database.
+10. **Interfaces** expose the same context through the dashboard, REST API, and MCP server.
 
-## Data age semantics
+## Persistence
 
-`created_at`, `modified_at`, and `last_accessed_at` are retained separately because sources expose different levels of evidence. `age_days` is based on creation when available, then modification, then discovery time. Lifecycle inactivity is based on last access when available, otherwise modification. Every future connector should document timestamp provenance and confidence.
+PostgreSQL is recommended for shared environments. SQLite supports local development and tests. OpenSearch is present in the development stack for integration work but is not the v1.1 authoritative query backend.
 
-## Production evolution
+## Trust boundaries
 
-A production architecture should replace SQLite with PostgreSQL, use a queue for connector and enrichment jobs, add object-level authorization, encrypt secrets through a dedicated secret manager, and separate the control plane from workers. OpenSearch may be added for large-scale search; Apache AGE or another graph store may be added only when graph queries justify the operational cost.
+Source credentials remain outside the catalog. Connector tokens are accepted for a scan and are not persisted. API keys identify callers at the application boundary. A production deployment should terminate TLS at an identity-aware ingress, validate OIDC tokens, manage secrets externally, and isolate connector egress.
+
+## Scale path
+
+The v1.2 scope moves connector and enrichment work to background workers, adds queueing, OpenSearch-backed indexing, object evidence storage, migrations, tenant context, observability, and high-availability deployment patterns.

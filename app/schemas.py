@@ -21,7 +21,7 @@ class PolicyRequest(BaseModel):
     destination_region:str="us"
 
 class PolicyDecision(BaseModel):
-    decision:str; asset_id:int; agent_key:str; destination:str; action:str; purpose:str; risk_score:int; reasons:list[str]; controls:list[str]; confidence:float; policy_version:str; expires_in_seconds:int
+    decision:str; asset_id:int; agent_key:str; destination:str; action:str; purpose:str; risk_score:int; reasons:list[str]; controls:list[str]; confidence:float; policy_version:str; expires_in_seconds:int; matched_policies:list[str]=Field(default_factory=list)
 
 class S3ScanRequest(BaseModel):
     bucket:str; prefix:str=""; region:str|None=None; max_objects:int=Field(default=500,ge=1,le=5000)
@@ -31,3 +31,42 @@ class GDriveScanRequest(BaseModel):
 
 class DemoGenerateRequest(BaseModel):
     profile:str="financial-services"; samples:int=Field(default=240,ge=80,le=600); seed:int=Field(default=41,ge=0,le=999999)
+
+
+class ConnectorScanRequest(BaseModel):
+    account: str
+    cursor: str | None = None
+    max_items: int = Field(default=500, ge=1, le=5000)
+    token: str | None = Field(default=None, repr=False)
+    api_url: str | None = None
+    project: str | None = None
+    site_id: str | None = None
+    drive_id: str | None = None
+
+
+class ClassificationReviewResolution(BaseModel):
+    status: str = Field(pattern="^(approved|rejected|corrected)$")
+    sensitivity: str | None = None
+    labels: list[str] = Field(default_factory=list)
+    reviewer: str = "analyst"
+
+
+class PolicySimulationRequest(BaseModel):
+    asset_id: int
+    agent_key: str
+    destination: str
+    purpose: str
+    action: str = "send"
+
+
+class AIUsageEventCreate(BaseModel):
+    event_id: str = Field(min_length=3, max_length=240)
+    agent_key: str
+    user_identity: str
+    asset_id: int
+    model: str
+    destination: str
+    purpose: str
+    action: str = "read"
+    timestamp: datetime
+    metadata: dict = Field(default_factory=dict)

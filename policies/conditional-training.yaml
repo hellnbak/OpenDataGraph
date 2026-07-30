@@ -1,0 +1,14 @@
+id: require-approval-for-training
+version: 1
+description: Require explicit ownership approval for training and fine-tuning.
+match:
+  action:
+    - train
+    - fine-tune
+decision: conditional
+risk_score: 70
+reason: Training use requires explicit data-owner approval and a documented retention boundary.
+controls:
+  - data-owner-approval
+  - training-data-retention-limit
+  - no-secondary-use

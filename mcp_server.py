@@ -4,10 +4,12 @@ import httpx
 from mcp.server.fastmcp import FastMCP
 
 BASE=os.getenv("ODG_API_URL","http://localhost:8080")
+API_KEY=os.getenv("ODG_API_KEY","")
 mcp=FastMCP("OpenDataGraph")
 
 def call(method,path,**kwargs):
-    with httpx.Client(base_url=BASE,timeout=30) as client:
+    headers={"X-API-Key":API_KEY} if API_KEY else {}
+    with httpx.Client(base_url=BASE,timeout=30,headers=headers) as client:
         r=client.request(method,path,**kwargs); r.raise_for_status(); return r.json()
 
 @mcp.tool()
@@ -35,5 +37,18 @@ def authorize_ai_data_use(asset_id:int, agent_key:str, destination:str, purpose:
 def data_intelligence_summary() -> dict:
     """Get enterprise-wide sensitive data, lifecycle, source, and AI readiness metrics."""
     return call("GET","/api/v1/summary")
+
+@mcp.tool()
+def list_ai_usage_events(limit:int=100) -> list[dict]:
+    """List observed AI data-use events and their correlated policy decisions."""
+    return call("GET","/api/v1/ai-usage/events",params={"limit":min(max(limit,1),1000)})
+
+@mcp.tool()
+def get_data_relationships(asset_id:int|None=None, agent_key:str="") -> list[dict]:
+    """Get knowledge-graph relationships for a data asset or AI agent."""
+    params={}
+    if asset_id is not None: params["asset_id"]=asset_id
+    if agent_key: params["agent_key"]=agent_key
+    return call("GET","/api/v1/graph/relationships",params=params)
 
 if __name__ == "__main__": mcp.run()

@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: opendatagraph
       POSTGRES_USER: opendatagraph
-      POSTGRES_PASSWORD: opendatagraph-dev
+      POSTGRES_PASSWORD: ${ODG_POSTGRES_PASSWORD:?Set ODG_POSTGRES_PASSWORD}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U opendatagraph"]
       interval: 5s
@@ -39,7 +39,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      ODG_DATABASE_URL: postgresql+psycopg://opendatagraph:opendatagraph-dev@postgres:5432/opendatagraph
+      ODG_DATABASE_URL: postgresql+psycopg://opendatagraph:${ODG_POSTGRES_PASSWORD}@postgres:5432/opendatagraph
       ODG_AUTO_SEED_DEMO: "true"
       ODG_CLASSIFICATION_MODE: hybrid
       ODG_OLLAMA_URL: http://host.docker.internal:11434

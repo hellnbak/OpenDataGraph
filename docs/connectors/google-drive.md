@@ -18,4 +18,4 @@ curl -X POST http://localhost:8080/api/v1/connectors/google-drive/scan \
  -d '{"credentials_file":"/run/secrets/gdrive-service-account.json","impersonate_user":"security@example.com","max_files":500}'
 ```
 
-The connector does not download document contents in Phase 1.
+The connector does not download document contents in v1.1.

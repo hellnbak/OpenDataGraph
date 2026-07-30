@@ -4,8 +4,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-import httpx
-
 from .config import settings
 
 
@@ -16,12 +14,13 @@ class Classification:
     business_domain: str
     reason: str
     confidence: float
+    review_required: bool = False
 
 
 PATTERNS = {
-    "Secrets": [r"api[_-]?key", r"secret", r"password", r"private[_-]?key", r"token"],
-    "PII": [r"ssn", r"social.?security", r"passport", r"driver.?license", r"date.?of.?birth", r"dob", r"customer[_ -]?export"],
-    "Financial": [r"credit.?card", r"bank.?account", r"routing.?number", r"invoice", r"payroll"],
+    "Secrets": [r"api[_-]?key", r"secret", r"password", r"private[_-]?key", r"token", r"-----begin (?:rsa |ec )?private key-----", r"(?i)aws_secret_access_key\s*="],
+    "PII": [r"ssn", r"social.?security", r"passport", r"driver.?license", r"date.?of.?birth", r"dob", r"customer[_ -]?export", r"\b\d{3}-\d{2}-\d{4}\b"],
+    "Financial": [r"credit.?card", r"bank.?account", r"routing.?number", r"invoice", r"payroll", r"\b(?:\d[ -]*?){13,19}\b"],
     "Health": [r"patient", r"diagnosis", r"medical", r"hipaa", r"prescription"],
     "Source Code": [r"\.py(?:\s|$)", r"\.go(?:\s|$)", r"\.js(?:\s|$)", r"\.ts(?:\s|$)", r"\.java(?:\s|$)", r"\.tf(?:\s|$)", r"\.yaml(?:\s|$)", r"\.yml(?:\s|$)"],
     "Legal": [r"contract", r"nda", r"litigation", r"legal.?hold"],
@@ -73,10 +72,12 @@ def heuristic_classify(name: str, path: str, mime_type: str = "", sample: str = 
         if matched
         else "No high-risk indicators found in available metadata; defaulted to internal business data."
     )
-    return Classification(sensitivity, sorted(set(labels)), business_domain, reason, confidence)
+    return Classification(sensitivity, sorted(set(labels)), business_domain, reason, confidence, confidence < 0.70)
 
 
 async def ollama_classify(name: str, path: str, mime_type: str, sample: str = "") -> Classification | None:
+    import httpx
+
     prompt = f"""Classify this enterprise data asset. Return ONLY JSON with keys sensitivity, labels, business_domain, reason, confidence.
 Sensitivity must be one of Public, Internal, Confidential, Restricted.
 Asset name: {name}
@@ -98,6 +99,7 @@ Sample: {sample[:2500]}
                 business_domain=parsed.get("business_domain", "General"),
                 reason=parsed.get("reason", "Classified by local model"),
                 confidence=float(parsed.get("confidence", 0.75)),
+                review_required=float(parsed.get("confidence", 0.75)) < 0.70,
             )
     except Exception:
         return None

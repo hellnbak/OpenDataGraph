@@ -4,14 +4,16 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from connectors.s3 import scan_bucket
 from connectors.gdrive import scan_drive
+from connectors.github import GitHubConnector
+from connectors.gitlab import GitLabConnector
+from connectors.sharepoint import SharePointConnector
 from .classification import classify, heuristic_classify
 from .config import settings
 from .database import Base, SessionLocal, engine, get_db
@@ -19,9 +21,24 @@ from .demo_data import DEMO_ASSETS
 from .enterprise_demo import PROFILES, generate_enterprise_assets, profile_catalog, represented_count
 from .lifecycle import calculate_lifecycle
 from .agents import DEMO_AGENTS
+from .auth import Principal, current_principal, oidc_configuration, require_role
+from .services.connectors import ingest_connector
 from .services.policy import audit as audit_decision, evaluate as evaluate_decision
-from .models import AIAgent, DataAsset, DecisionAudit
-from .schemas import AgentCreate, AgentOut, AssetOut, DemoGenerateRequest, GDriveScanRequest, PolicyDecision, PolicyRequest, S3ScanRequest
+from .models import AIAgent, AIUsageEvent, ClassificationReview, ConnectorRun, DataAsset, DecisionAudit, GraphEdge
+from .schemas import (
+    AgentCreate,
+    AgentOut,
+    AIUsageEventCreate,
+    AssetOut,
+    ClassificationReviewResolution,
+    ConnectorScanRequest,
+    DemoGenerateRequest,
+    GDriveScanRequest,
+    PolicyDecision,
+    PolicyRequest,
+    PolicySimulationRequest,
+    S3ScanRequest,
+)
 
 
 async def enrich_asset(asset: DataAsset, deterministic: bool = False) -> None:
@@ -76,20 +93,20 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title=settings.app_name, version="1.0.0-rc1", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="1.1.0", lifespan=lifespan)
 BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
-templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=FileResponse)
 def dashboard(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    del request
+    return FileResponse(BASE_DIR / "templates" / "index.html")
 
 
 @app.get("/health")
 def health(db: Session = Depends(get_db)):
-    return {"ok": True, "version": "1.0.0-rc1", "assets": db.scalar(select(func.count(DataAsset.id)))}
+    return {"ok": True, "version": "1.1.0", "assets": db.scalar(select(func.count(DataAsset.id)))}
 
 
 @app.get("/api/v1/assets", response_model=list[AssetOut])
@@ -156,6 +173,12 @@ def summary(db: Session = Depends(get_db)):
         "ai_blocked": ai_blocked, "sensitivity": sensitivity, "lifecycle": lifecycle, "sources": sources, "domains": domains,
         "storage_bytes": storage_bytes, "priority_reviews": priority_reviews, "estimated_annual_savings": estimated_savings,
         "ai_readiness_score": max(18, min(94, round(88 - (restricted_assets/max(total_assets,1))*28 - (ai_blocked/max(total_assets,1))*22))),
+        "connector_runs": db.scalar(select(func.count(ConnectorRun.id))) or 0,
+        "pending_classification_reviews": db.scalar(
+            select(func.count(ClassificationReview.id)).where(ClassificationReview.status == "pending")
+        ) or 0,
+        "ai_usage_events": db.scalar(select(func.count(AIUsageEvent.id))) or 0,
+        "graph_edges": db.scalar(select(func.count(GraphEdge.id))) or 0,
     }
 
 
@@ -258,3 +281,252 @@ async def generate_demo(req: DemoGenerateRequest, db: Session = Depends(get_db))
     db.commit()
     return {"ok": True, "profile": profile.key, "organization": profile.name,
             "sample_records": len(records), "represented_assets": profile.represented_assets}
+
+
+@app.get("/api/v1/auth/configuration")
+def auth_configuration(principal: Principal = Depends(current_principal)):
+    return {"auth_disabled": settings.auth_disabled, "principal": principal.__dict__, "oidc": oidc_configuration()}
+
+
+@app.post("/api/v1/connectors/{connector_type}/scan")
+async def scan_connector(
+    connector_type: str,
+    req: ConnectorScanRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("connector-operator")),
+):
+    del principal
+    if not req.token:
+        raise HTTPException(400, "A short-lived connector token is required")
+    if connector_type == "github":
+        connector = GitHubConnector(req.account, req.token, req.api_url or "https://api.github.com")
+    elif connector_type == "gitlab":
+        connector = GitLabConnector(req.account, req.token, req.api_url or "https://gitlab.com/api/v4")
+    elif connector_type == "sharepoint":
+        if not req.site_id or not req.drive_id:
+            raise HTTPException(400, "site_id and drive_id are required for SharePoint")
+        connector = SharePointConnector(req.site_id, req.drive_id, req.token)
+    else:
+        raise HTTPException(404, "Supported connector types: github, gitlab, sharepoint")
+    try:
+        return await ingest_connector(db, connector, req.cursor, req.max_items)
+    except Exception as exc:
+        raise HTTPException(400, f"{connector_type} scan failed: {exc}") from exc
+
+
+@app.get("/api/v1/connectors/runs")
+def connector_runs(
+    limit: int = Query(default=50, ge=1, le=500),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("auditor")),
+):
+    del principal
+    rows = list(db.scalars(select(ConnectorRun).order_by(ConnectorRun.started_at.desc()).limit(limit)).all())
+    return [
+        {
+            "id": row.id,
+            "source": row.source,
+            "source_account": row.source_account,
+            "status": row.status,
+            "cursor": row.cursor,
+            "next_cursor": row.next_cursor,
+            "imported": row.imported,
+            "updated": row.updated,
+            "error": row.error,
+            "started_at": row.started_at,
+            "finished_at": row.finished_at,
+        }
+        for row in rows
+    ]
+
+
+@app.get("/api/v1/classification/reviews")
+def classification_reviews(
+    status: str = "pending",
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("analyst")),
+):
+    del principal
+    rows = list(
+        db.scalars(
+            select(ClassificationReview)
+            .where(ClassificationReview.status == status)
+            .order_by(ClassificationReview.confidence, ClassificationReview.created_at)
+        ).all()
+    )
+    return [
+        {
+            "id": row.id,
+            "asset_id": row.asset_id,
+            "status": row.status,
+            "original_sensitivity": row.original_sensitivity,
+            "original_labels": row.original_labels,
+            "confidence": row.confidence,
+            "reason": row.reason,
+            "corrected_sensitivity": row.corrected_sensitivity,
+            "corrected_labels": row.corrected_labels,
+            "reviewer": row.reviewer,
+            "created_at": row.created_at,
+            "resolved_at": row.resolved_at,
+        }
+        for row in rows
+    ]
+
+
+@app.post("/api/v1/classification/reviews/{review_id}")
+def resolve_classification_review(
+    review_id: int,
+    req: ClassificationReviewResolution,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("analyst")),
+):
+    review = db.get(ClassificationReview, review_id)
+    if not review:
+        raise HTTPException(404, "Classification review not found")
+    asset = db.get(DataAsset, review.asset_id)
+    if not asset:
+        raise HTTPException(404, "Reviewed asset not found")
+    if req.status == "corrected":
+        if not req.sensitivity:
+            raise HTTPException(400, "A corrected sensitivity is required")
+        asset.sensitivity = req.sensitivity
+        if req.labels:
+            asset.classification_labels = ", ".join(req.labels)
+        asset.classification_reason = f"Corrected by {req.reviewer or principal.subject} during human review."
+        asset.classification_confidence = 1.0
+    review.status = req.status
+    review.corrected_sensitivity = req.sensitivity
+    review.corrected_labels = ", ".join(req.labels) if req.labels else None
+    review.reviewer = req.reviewer or principal.subject
+    review.resolved_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "review_id": review.id, "status": review.status, "asset_id": asset.id}
+
+
+@app.post("/api/v1/policy/simulate")
+def simulate_policy(
+    req: PolicySimulationRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("analyst")),
+):
+    del principal
+    asset = db.get(DataAsset, req.asset_id)
+    if not asset:
+        raise HTTPException(404, "Asset not found")
+    agent = db.scalar(select(AIAgent).where(AIAgent.key == req.agent_key))
+    if not agent:
+        raise HTTPException(404, "AI agent not found")
+    result = evaluate_decision(agent, asset, req.destination, req.action, req.purpose)
+    return {"simulation": True, "asset_id": asset.id, "agent_key": agent.key, **result}
+
+
+@app.post("/api/v1/ai-usage/events")
+def ingest_ai_usage_event(
+    req: AIUsageEventCreate,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("analyst")),
+):
+    del principal
+    existing = db.scalar(select(AIUsageEvent).where(AIUsageEvent.event_id == req.event_id))
+    if existing:
+        return {"ok": True, "idempotent": True, "event_id": existing.event_id, "decision": existing.decision}
+    asset = db.get(DataAsset, req.asset_id)
+    if not asset:
+        raise HTTPException(404, "Asset not found")
+    agent = db.scalar(select(AIAgent).where(AIAgent.key == req.agent_key))
+    if not agent:
+        raise HTTPException(404, "AI agent not found")
+    result = evaluate_decision(agent, asset, req.destination, req.action, req.purpose)
+    event = AIUsageEvent(
+        event_id=req.event_id,
+        agent_key=req.agent_key,
+        user_identity=req.user_identity,
+        asset_id=req.asset_id,
+        model=req.model,
+        destination=req.destination,
+        purpose=req.purpose,
+        action=req.action,
+        occurred_at=req.timestamp.replace(tzinfo=None),
+        metadata_json=json.dumps(req.metadata),
+        decision=result["decision"],
+        risk_score=result["risk_score"],
+    )
+    db.add(event)
+    db.add(
+        GraphEdge(
+            source_type="agent",
+            source_id=req.agent_key,
+            relationship="accessed",
+            target_type="asset",
+            target_id=str(req.asset_id),
+            metadata_json=json.dumps({"event_id": req.event_id, "model": req.model, "decision": result["decision"]}),
+        )
+    )
+    agent.last_activity_at = req.timestamp.replace(tzinfo=None)
+    db.commit()
+    return {
+        "ok": True,
+        "idempotent": False,
+        "event_id": event.event_id,
+        "decision": event.decision,
+        "risk_score": event.risk_score,
+        "matched_policies": result["matched_policies"],
+    }
+
+
+@app.get("/api/v1/ai-usage/events")
+def list_ai_usage_events(
+    limit: int = Query(default=100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("auditor")),
+):
+    del principal
+    rows = list(db.scalars(select(AIUsageEvent).order_by(AIUsageEvent.occurred_at.desc()).limit(limit)).all())
+    return [
+        {
+            "event_id": row.event_id,
+            "agent_key": row.agent_key,
+            "user_identity": row.user_identity,
+            "asset_id": row.asset_id,
+            "model": row.model,
+            "destination": row.destination,
+            "purpose": row.purpose,
+            "action": row.action,
+            "timestamp": row.occurred_at,
+            "metadata": json.loads(row.metadata_json),
+            "decision": row.decision,
+            "risk_score": row.risk_score,
+        }
+        for row in rows
+    ]
+
+
+@app.get("/api/v1/graph/relationships")
+def graph_relationships(
+    asset_id: int | None = None,
+    agent_key: str | None = None,
+    limit: int = Query(default=200, ge=1, le=2000),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("read-only")),
+):
+    del principal
+    statement = select(GraphEdge).order_by(GraphEdge.created_at.desc())
+    if asset_id is not None:
+        statement = statement.where(
+            ((GraphEdge.source_type == "asset") & (GraphEdge.source_id == str(asset_id)))
+            | ((GraphEdge.target_type == "asset") & (GraphEdge.target_id == str(asset_id)))
+        )
+    if agent_key:
+        statement = statement.where(GraphEdge.source_type == "agent", GraphEdge.source_id == agent_key)
+    rows = list(db.scalars(statement.limit(limit)).all())
+    return [
+        {
+            "id": row.id,
+            "source": {"type": row.source_type, "id": row.source_id},
+            "relationship": row.relationship,
+            "target": {"type": row.target_type, "id": row.target_id},
+            "metadata": json.loads(row.metadata_json),
+            "created_at": row.created_at,
+        }
+        for row in rows
+    ]

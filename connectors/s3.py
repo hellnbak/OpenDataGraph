@@ -1,10 +1,9 @@
 from datetime import datetime
 from typing import Iterator
 
-import boto3
-
-
 def scan_bucket(bucket: str, prefix: str = "", region: str | None = None, max_objects: int = 500) -> Iterator[dict]:
+    import boto3
+
     client = boto3.client("s3", region_name=region)
     paginator = client.get_paginator("list_objects_v2")
     seen = 0

@@ -6,7 +6,7 @@ Uses boto3's standard credential chain: environment variables, profiles, contain
 
 ## Minimum scope
 
-Grant only the target buckets and prefixes. The connector needs bucket listing and object metadata access. It does not download object bodies in Phase 1.
+Grant only the target buckets and prefixes. The connector needs bucket listing and object metadata access. It does not download object bodies in v1.1.
 
 ## Collected metadata
 

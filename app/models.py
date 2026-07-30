@@ -65,3 +65,64 @@ class DecisionAudit(Base):
     policy_version: Mapped[str] = mapped_column(String(40))
     reasons_json: Mapped[str] = mapped_column(Text)
     controls_json: Mapped[str] = mapped_column(Text)
+
+
+class ConnectorRun(Base):
+    __tablename__ = "connector_runs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(80), index=True)
+    source_account: Mapped[str] = mapped_column(String(240), default="default")
+    status: Mapped[str] = mapped_column(String(40), default="running", index=True)
+    cursor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    next_cursor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    imported: Mapped[int] = mapped_column(Integer, default=0)
+    updated: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ClassificationReview(Base):
+    __tablename__ = "classification_reviews"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    asset_id: Mapped[int] = mapped_column(Integer, index=True)
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    original_sensitivity: Mapped[str] = mapped_column(String(40))
+    original_labels: Mapped[str] = mapped_column(Text, default="")
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    reason: Mapped[str] = mapped_column(Text)
+    corrected_sensitivity: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    corrected_labels: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewer: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class AIUsageEvent(Base):
+    __tablename__ = "ai_usage_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[str] = mapped_column(String(240), unique=True, index=True)
+    agent_key: Mapped[str] = mapped_column(String(120), index=True)
+    user_identity: Mapped[str] = mapped_column(String(320), index=True)
+    asset_id: Mapped[int] = mapped_column(Integer, index=True)
+    model: Mapped[str] = mapped_column(String(240))
+    destination: Mapped[str] = mapped_column(String(240))
+    purpose: Mapped[str] = mapped_column(String(240))
+    action: Mapped[str] = mapped_column(String(80))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    decision: Mapped[str] = mapped_column(String(40), index=True)
+    risk_score: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class GraphEdge(Base):
+    __tablename__ = "graph_edges"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_type: Mapped[str] = mapped_column(String(80), index=True)
+    source_id: Mapped[str] = mapped_column(String(320), index=True)
+    relationship: Mapped[str] = mapped_column(String(120), index=True)
+    target_type: Mapped[str] = mapped_column(String(80), index=True)
+    target_id: Mapped[str] = mapped_column(String(320), index=True)
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

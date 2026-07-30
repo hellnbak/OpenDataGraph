@@ -1,0 +1,15 @@
+id: deny-restricted-data-to-public-ai
+version: 1
+description: Prevent restricted data from being sent to public AI services.
+match:
+  sensitivity:
+    - Restricted
+  destination_type:
+    - public_ai
+decision: deny
+risk_score: 95
+reason: Restricted data cannot be sent to an unapproved public AI destination.
+controls:
+  - use-approved-private-model
+  - require-security-review
+  - redact-direct-identifiers

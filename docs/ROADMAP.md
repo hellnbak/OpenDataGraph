@@ -1,37 +1,29 @@
 # Roadmap
 
-## V1 — Demo foundation
+## v1.1 — Design-partner foundation
 
-- Unified normalized data-asset model
-- AWS S3 metadata connector
-- Explainable classification and optional Ollama support
-- Data age, stale scoring, lifecycle state, and retention hints
-- AI policy decision API
-- Screenshot-ready dashboard
+- Connector SDK, scan history, and incremental cursors
+- AWS S3, Google Drive, GitHub, GitLab, and SharePoint / OneDrive
+- Classification review workflow
+- YAML policy bundles and simulation
+- API-key roles and OIDC integration boundary
+- AI usage events and relational knowledge graph
 
-## V1.1 — Design-partner testing
+## v1.2 — Enterprise deployment
 
-- Google Drive and SharePoint/OneDrive connectors
-- PostgreSQL metadata connector
-- Incremental scans, cursors, retries, and connector health
-- Authentication, organizations, RBAC, and audit trail
-- Policy bundles and configurable retention rules
-- CSV/JSON export and webhook/event output
+- Background workers and durable queue
+- OpenSearch-backed indexing and search
+- S3-compatible evidence storage
+- Tenant context and stronger authorization isolation
+- Database migrations and upgrade tooling
+- Metrics, tracing, structured logs, backup, and restore
+- Kubernetes, Helm, high availability, and AWS infrastructure templates
 
-## V1.2 — AI context infrastructure
+## v2 — Enterprise operations
 
-- AI gateway integration SDK
-- Agent and service identities as first-class principals
-- Content sampling with strict size and privacy limits
-- Embedding and semantic business-context enrichment
-- Model registry and approved-destination controls
-- OpenTelemetry traces and metrics
-
-## V2 — Enterprise scale
-
-- Distributed workers and job queue
-- PostgreSQL and search backend
-- Data lineage and relationship graph
-- Differential scans and change events
-- Legal hold and exception workflows
-- Enterprise SSO, SCIM, secrets management, and tenant isolation
+- Provider-specific OIDC and SCIM
+- Managed connector scheduling and rate-limit coordination
+- Legal hold, exceptions, and owner workflows
+- Alert destinations and enforcement integrations
+- Advanced lineage and graph queries
+- Policy lifecycle, approvals, and change auditing

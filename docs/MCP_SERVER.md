@@ -1,6 +1,6 @@
-# OpenDataGraph MCP Server
+# MCP Server
 
-The MCP server exposes the data intelligence and policy layers to compatible AI hosts while keeping policy decisions centralized in OpenDataGraph.
+The MCP server exposes OpenDataGraph context to compatible AI hosts while keeping policy decisions centralized.
 
 ## Tools
 
@@ -9,27 +9,15 @@ The MCP server exposes the data intelligence and policy layers to compatible AI 
 - `list_ai_agents`
 - `authorize_ai_data_use`
 - `data_intelligence_summary`
+- `list_ai_usage_events`
+- `get_data_relationships`
 
 ## Run
 
 Start OpenDataGraph, then:
 
 ```bash
-ODG_API_URL=http://localhost:8080 python mcp_server.py
+ODG_API_URL=http://localhost:8080 ODG_API_KEY=development-key python mcp_server.py
 ```
 
-Example stdio client configuration:
-
-```json
-{
-  "mcpServers": {
-    "opendatagraph": {
-      "command": "python",
-      "args": ["/absolute/path/to/OpenDataGraph/mcp_server.py"],
-      "env": {"ODG_API_URL": "http://localhost:8080"}
-    }
-  }
-}
-```
-
-The MCP server has read-only catalog tools plus one authorization tool. It does not delete data or change source-system permissions.
+`ODG_API_KEY` is optional only when application authentication is disabled. The server does not delete source data or change provider permissions.

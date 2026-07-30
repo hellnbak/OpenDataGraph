@@ -1,17 +1,28 @@
 # Security Policy
 
-## Supported versions
+## Supported version
 
-Only the latest development release is supported during the preview phase.
+Only the latest Community Preview release receives security fixes.
 
-## Reporting vulnerabilities
+## Reporting
 
-Do not disclose suspected vulnerabilities in a public issue. Before publishing the repository, replace this paragraph with a monitored private security-reporting address or enable GitHub private vulnerability reporting.
+Use the repository host's private vulnerability-reporting feature or a monitored private security contact. Do not disclose suspected vulnerabilities in a public issue.
 
-## V1 deployment warning
+## Deployment warning
 
-This preview is designed for local testing and screenshots. It does not yet include authentication, tenant isolation, production secret management, request throttling, or hardened network defaults. Do not expose it directly to the public internet or connect it to sensitive production sources without adding those controls.
+OpenDataGraph v1.1 includes API-key roles but is still a preview. Do not expose it directly to the public internet or connect sensitive production sources without TLS, identity-aware ingress, external secret management, network restrictions, backups, centralized logging, and provider-specific OIDC validation.
 
-## Credential handling
+## Credentials
 
-The service uses standard AWS credential resolution and does not persist AWS keys. Prefer short-lived, least-privilege roles. Never place credentials in `.env`, screenshots, sample payloads, or Git history.
+- Prefer short-lived workload identity and least-privilege provider roles.
+- Do not place tokens in `.env`, screenshots, sample payloads, logs, database rows, or source history.
+- Connector scan tokens are used for the request and are not written to connector-run records.
+- Rotate credentials after suspected disclosure.
+
+## Data handling
+
+Connectors are metadata-first. Sampled content should be disabled unless the organization has approved the source, size limit, retention policy, and processing boundary. Never use real customer data in the synthetic demo.
+
+## Authentication
+
+`ODG_AUTH_DISABLED=true` is only for trusted local development. Shared deployments must enable authentication, define role-scoped API keys, and place OIDC validation or another approved identity layer in front of the service.

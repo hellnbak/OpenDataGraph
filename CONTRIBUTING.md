@@ -2,10 +2,11 @@
 
 Thank you for helping build an open data intelligence layer for enterprise AI.
 
-1. Open an issue describing the problem and proposed behavior.
-2. Create a focused branch and include tests for behavior changes.
-3. Run `pytest -q` and `ruff check .` before opening a pull request.
-4. Do not commit credentials, real customer data, proprietary schemas, or copied vendor code.
-5. Connector pull requests must document required permissions, pagination, rate limits, timestamp semantics, and whether content is retrieved.
+1. Describe the problem, expected behavior, security impact, and compatibility considerations.
+2. Keep changes focused and include tests for behavior changes.
+3. Run `pytest -q`, `ruff check .`, and Python compilation before opening a pull request.
+4. Never include credentials, real customer data, proprietary schemas, access tokens, or copied vendor code.
+5. Connector changes must document permissions, pagination, rate limits, cursor semantics, timestamps, and whether content is retrieved.
+6. Policy changes must include an example decision and explain new controls.
 
-Please keep destructive data actions out of the core project. Lifecycle findings should remain advisory until explicit workflow, authorization, and safety controls exist.
+Lifecycle findings remain advisory until an explicitly authorized workflow performs an external action.

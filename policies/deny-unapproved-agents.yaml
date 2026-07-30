@@ -1,0 +1,13 @@
+id: deny-unapproved-ai-agents
+version: 1
+description: Prevent unapproved agents from accessing enterprise data.
+match:
+  agent_status:
+    - review
+    - disabled
+decision: deny
+risk_score: 90
+reason: The AI agent is not approved for production data access.
+controls:
+  - complete-agent-security-review
+  - assign-accountable-owner
