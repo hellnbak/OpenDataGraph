@@ -2,7 +2,7 @@ replicaCount: 2
 
 image:
   repository: opendatagraph
-  tag: "1.8.0"
+  tag: "1.9.0"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -56,11 +56,19 @@ config:
   policyCacheSeconds: "5"
   runtimeAuthorizationMode: enforce
   runtimeAuthorizationBatchMax: "100"
+  authzenSearchMax: "100"
+  policyRolloutCacheSeconds: "5"
   runtimeReceiptRetentionDays: "90"
   runtimeReceiptSigningProfile: ""
   runtimeReceiptSigningBatchSize: "100"
   runtimeReceiptSigningMaxAttempts: "3"
   runtimeReceiptPurgeBatchSize: "10000"
+  genaiTelemetryBatchMax: "1000"
+  governanceOutboxBatchSize: "100"
+  governanceOutboxMaxAttempts: "5"
+  remoteMcpEnabled: "false"
+  remoteMcpToolTtlMs: "60000"
+  remoteMcpDefaultAgentKey: ""
   classificationMode: metadata
   searchBackend: opensearch
   opensearchRequired: "true"

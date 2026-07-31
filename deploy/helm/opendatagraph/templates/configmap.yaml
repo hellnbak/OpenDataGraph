@@ -18,11 +18,19 @@ data:
   ODG_POLICY_CACHE_SECONDS: {{ .Values.config.policyCacheSeconds | quote }}
   ODG_RUNTIME_AUTHORIZATION_MODE: {{ .Values.config.runtimeAuthorizationMode | quote }}
   ODG_RUNTIME_AUTHORIZATION_BATCH_MAX: {{ .Values.config.runtimeAuthorizationBatchMax | quote }}
+  ODG_AUTHZEN_SEARCH_MAX: {{ .Values.config.authzenSearchMax | quote }}
+  ODG_POLICY_ROLLOUT_CACHE_SECONDS: {{ .Values.config.policyRolloutCacheSeconds | quote }}
   ODG_RUNTIME_RECEIPT_RETENTION_DAYS: {{ .Values.config.runtimeReceiptRetentionDays | quote }}
   ODG_RUNTIME_RECEIPT_SIGNING_PROFILE: {{ .Values.config.runtimeReceiptSigningProfile | quote }}
   ODG_RUNTIME_RECEIPT_SIGNING_BATCH_SIZE: {{ .Values.config.runtimeReceiptSigningBatchSize | quote }}
   ODG_RUNTIME_RECEIPT_SIGNING_MAX_ATTEMPTS: {{ .Values.config.runtimeReceiptSigningMaxAttempts | quote }}
   ODG_RUNTIME_RECEIPT_PURGE_BATCH_SIZE: {{ .Values.config.runtimeReceiptPurgeBatchSize | quote }}
+  ODG_GENAI_TELEMETRY_BATCH_MAX: {{ .Values.config.genaiTelemetryBatchMax | quote }}
+  ODG_GOVERNANCE_OUTBOX_BATCH_SIZE: {{ .Values.config.governanceOutboxBatchSize | quote }}
+  ODG_GOVERNANCE_OUTBOX_MAX_ATTEMPTS: {{ .Values.config.governanceOutboxMaxAttempts | quote }}
+  ODG_REMOTE_MCP_ENABLED: {{ .Values.config.remoteMcpEnabled | quote }}
+  ODG_REMOTE_MCP_TOOL_TTL_MS: {{ .Values.config.remoteMcpToolTtlMs | quote }}
+  ODG_REMOTE_MCP_DEFAULT_AGENT_KEY: {{ .Values.config.remoteMcpDefaultAgentKey | quote }}
   ODG_CLASSIFICATION_MODE: {{ .Values.config.classificationMode | quote }}
   ODG_SEARCH_BACKEND: {{ .Values.config.searchBackend | quote }}
   ODG_OPENSEARCH_REQUIRED: {{ .Values.config.opensearchRequired | quote }}

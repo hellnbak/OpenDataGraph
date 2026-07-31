@@ -51,8 +51,12 @@ def authzen_configuration(request: Request):
         "policy_decision_point": base_url,
         "access_evaluation_endpoint": f"{base_url}/access/v1/evaluation",
         "access_evaluations_endpoint": f"{base_url}/access/v1/evaluations",
+        "subject_search_endpoint": f"{base_url}/access/v1/search/subject",
+        "resource_search_endpoint": f"{base_url}/access/v1/search/resource",
+        "action_search_endpoint": f"{base_url}/access/v1/search/action",
         "odg_enforcement_mode": settings.runtime_authorization_mode,
         "odg_receipts_endpoint": f"{base_url}/api/v1/runtime/decision-receipts",
+        "odg_enforcement_events_endpoint": f"{base_url}/api/v1/runtime/enforcement-events",
     }
 
 

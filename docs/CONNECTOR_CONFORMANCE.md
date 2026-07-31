@@ -1,6 +1,6 @@
 # Connector Conformance and Capability Policy
 
-OpenDataGraph v1.8 includes versioned connector manifests, a central registry, deterministic conformance checks, and tenant-scoped capability policy enforcement.
+OpenDataGraph v1.9 includes versioned connector manifests, a central registry, deterministic conformance checks, and tenant-scoped capability policy enforcement.
 
 ## Manifest contract
 

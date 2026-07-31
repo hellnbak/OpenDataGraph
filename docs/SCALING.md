@@ -1,6 +1,6 @@
 # Scaling
 
-OpenDataGraph v1.8 adds a scale-oriented runtime authorization path, but it does not publish universal throughput or estate-size claims. Capacity depends on PostgreSQL commit latency, pool sizing, policy and exception distributions, batch shape, signer latency, worker count, storage, and deployment topology.
+OpenDataGraph v1.9 extends the scale-oriented runtime path with rollout comparison, enforcement evidence, telemetry ingestion, and a transactional outbox, but it does not publish universal throughput or estate-size claims. Capacity depends on PostgreSQL commit latency, pool sizing, policy and exception distributions, batch shape, rollout stage, signer latency, telemetry cardinality, outbox fan-out, worker count, storage, and deployment topology.
 
 ## Authorization hot path
 
@@ -10,9 +10,9 @@ A registered AI-agent and data-asset evaluation normally performs:
 2. tenant-scoped asset lookup;
 3. effective policy lookup from the bounded in-process cache;
 4. indexed active exception lookup;
-5. append-only receipt insert and database commit.
+5. append-only receipt and transactional outbox inserts followed by database commit.
 
-The request path does not call connectors, OpenSearch, object storage, webhooks, workload exchange, KMS, Sigstore, or another policy service. Deferred signing keeps external signer latency out of authorization p95. Durable receipt commit remains intentionally synchronous, so PostgreSQL write latency is part of every response.
+The request path does not call connectors, OpenSearch, object storage, webhooks, workload exchange, KMS, Sigstore, or another policy service. Deferred signing keeps external signer latency out of authorization p95. Durable receipt and outbox commit remains intentionally synchronous, so PostgreSQL write latency is part of every response. Shadow and canary rollouts also evaluate the candidate policy and should be qualified with representative bundle sizes.
 
 Batch requests reuse repeated agent, asset, and AI resource lookups and commit their receipts together. Use AuthZEN boxcarring when a policy-enforcement point has related checks and can accept all receipts sharing one transaction boundary. The default batch limit is 100; larger batches increase transaction duration, rollback cost, response size, and lock retention.
 
@@ -37,7 +37,7 @@ SQLite serializes writes and is limited to local development, tests, and control
 
 ## Index strategy
 
-Migration `20260731_0007` adds:
+Migrations `20260731_0007` and `20260731_0008` add:
 
 - tenant and creation order for recent receipts;
 - tenant, subject, and creation order;
@@ -51,6 +51,9 @@ Migration `20260731_0007` adds:
 - tenant, drift state, and observation time;
 - tenant, relationship, and observation time;
 - tenant, active state, and expiry for policy exceptions.
+- tenant and rollout order for receipt comparison;
+- tenant-leading enforcement, rollout, replay, telemetry, and outbox indexes;
+- a global outbox dispatch queue index for bounded worker claims.
 
 The high-write receipt and observation tables intentionally avoid redundant single-column indexes. This reduces index maintenance, write-ahead-log volume, storage, and vacuum work while retaining indexes for documented access paths.
 
@@ -74,9 +77,15 @@ Measure row and index size in the target PostgreSQL version; do not infer them f
 
 Workers remove expired completed receipts in bounded batches. `ODG_RUNTIME_RECEIPT_PURGE_BATCH_SIZE` must exceed the number of receipts expiring per maintenance interval or backlog will grow. Pending and in-progress signing rows are not purged.
 
-At very high sustained volume, qualify an environment-specific PostgreSQL time-partitioning or archive design before production. The bundled migration creates a portable non-partitioned table for SQLite and PostgreSQL compatibility. Converting an active table to partitioning is an operator-owned migration requiring backups, write coordination, plan review, and rollback; it is not automatic in v1.8.
+At very high sustained volume, qualify an environment-specific PostgreSQL time-partitioning or archive design before production. The bundled migration creates portable non-partitioned tables for SQLite and PostgreSQL compatibility. Converting an active table to partitioning is an operator-owned migration requiring backups, write coordination, plan review, and rollback; it is not automatic in v1.9.
 
 Signing workers claim rows atomically. Add worker replicas when signer throughput is below receipt arrival rate, but account for KMS quotas, Sigstore availability, key policy, and cost. Keep signing batch size small enough that connector, export, governance, and integration jobs are not starved. Failed signatures retry with bounded backoff and stop after the configured maximum.
+
+## Telemetry and outbox
+
+OTLP JSON requests are bounded to 2 MiB and at most `ODG_GENAI_TELEMETRY_BATCH_MAX` spans. Ingestion performs tenant-scoped idempotency and discovery lookups per GenAI span, then commits the batch once. Use collector-side batching, sampling, retry, and backpressure; do not route unrestricted fleet telemetry directly to the API.
+
+The worker claims at most `ODG_GOVERNANCE_OUTBOX_BATCH_SIZE` events per loop. Each outbox event can fan out to every matching integration endpoint and each delivery creates a background job. Qualify endpoint count, subscription distribution, downstream latency, retry storms, and dead-letter growth. Scale workers only after confirming PostgreSQL claims and destination quotas remain healthy.
 
 ## Benchmarks
 

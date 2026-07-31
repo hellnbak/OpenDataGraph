@@ -428,10 +428,14 @@ def test_benchmark_profiles_and_read_only_query_plan_capture(monkeypatch):
     assert set(report["plans"]) == {
         "ai-lineage-drift",
         "catalog-filter",
+        "genai-telemetry-model",
         "graph-outbound",
         "governance-overdue",
+        "governance-outbox-pending",
         "ownership-remediation",
+        "runtime-enforcement-receipt",
         "runtime-receipts-retention",
+        "runtime-receipts-rollout",
         "runtime-receipts-signing",
         "runtime-receipts-subject",
     }

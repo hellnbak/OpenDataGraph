@@ -66,6 +66,39 @@ QUERIES = {
         ORDER BY retention_until
         LIMIT 10000
     """,
+    "runtime-receipts-rollout": """
+        SELECT receipt_id, rollout_stage, baseline_policy_decision,
+               candidate_policy_decision, created_at
+        FROM runtime_decision_receipts
+        WHERE tenant_id = :tenant_id
+          AND rollout_id = :rollout_id
+        ORDER BY created_at DESC
+        LIMIT 1000
+    """,
+    "runtime-enforcement-receipt": """
+        SELECT event_id, pep_id, outcome, occurred_at
+        FROM enforcement_events
+        WHERE tenant_id = :tenant_id
+          AND receipt_id = :receipt_id
+        ORDER BY occurred_at DESC
+        LIMIT 1000
+    """,
+    "genai-telemetry-model": """
+        SELECT event_id, operation, provider, model, occurred_at
+        FROM genai_telemetry_events
+        WHERE tenant_id = :tenant_id
+          AND model = :model
+        ORDER BY occurred_at DESC
+        LIMIT 1000
+    """,
+    "governance-outbox-pending": """
+        SELECT id, event_id, event_type, attempts, available_at
+        FROM governance_outbox_events
+        WHERE status = 'pending'
+          AND available_at <= CURRENT_TIMESTAMP
+        ORDER BY created_at
+        LIMIT 100
+    """,
     "ai-lineage-drift": """
         SELECT event_id, relationship_id, source_type, target_type, observed_at
         FROM ai_lineage_observations
@@ -90,6 +123,9 @@ def capture_query_plans(database_url: str, tenant_id: str) -> dict:
         "campaign_id": "00000000-0000-0000-0000-000000000000",
         "runtime_subject_type": "ai_agent",
         "runtime_subject_id": "example-agent",
+        "rollout_id": "00000000-0000-0000-0000-000000000000",
+        "receipt_id": "00000000-0000-0000-0000-000000000000",
+        "model": "example-model",
     }
     plans = {}
     try:

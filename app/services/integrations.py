@@ -13,7 +13,13 @@ from app.services.connectors import safe_connector_error
 from connectors.security import validate_https_url
 
 
-INTEGRATION_EVENT_FORMATS = {"native", "cloudevents", "cef", "splunk-hec"}
+INTEGRATION_EVENT_FORMATS = {
+    "native",
+    "cloudevents",
+    "cef",
+    "splunk-hec",
+    "kafka-rest",
+}
 MAX_INTEGRATION_PAYLOAD_BYTES = 256 * 1024
 
 
@@ -207,18 +213,20 @@ def _format_delivery(
         body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
         return event_format, "application/json", body
     if event_format == "cloudevents":
-        envelope = {
-            "specversion": "1.0",
-            "id": delivery.delivery_id,
-            "source": "urn:opendatagraph:integration",
-            "type": f"com.opendatagraph.{delivery.event_type}",
-            "subject": endpoint.endpoint_id,
-            "time": timestamp,
-            "datacontenttype": "application/json",
-            "data": payload,
-        }
+        envelope = _cloudevent(endpoint, delivery, payload, timestamp)
         body = json.dumps(envelope, separators=(",", ":"), sort_keys=True).encode()
         return event_format, "application/cloudevents+json", body
+    if event_format == "kafka-rest":
+        envelope = {
+            "records": [
+                {
+                    "key": delivery.tenant_id,
+                    "value": _cloudevent(endpoint, delivery, payload, timestamp),
+                }
+            ]
+        }
+        body = json.dumps(envelope, separators=(",", ":"), sort_keys=True).encode()
+        return event_format, "application/vnd.kafka.json.v2+json", body
     if event_format == "splunk-hec":
         envelope = {
             "time": delivery.created_at.replace(tzinfo=UTC).timestamp(),
@@ -244,6 +252,24 @@ def _format_delivery(
         f"cs2Label=payload cs2={_cef_escape(extension)}"
     )
     return event_format, "text/plain; charset=utf-8", cef.encode()
+
+
+def _cloudevent(
+    endpoint: IntegrationEndpoint,
+    delivery: IntegrationDelivery,
+    payload: dict,
+    timestamp: str,
+) -> dict:
+    return {
+        "specversion": "1.0",
+        "id": delivery.delivery_id,
+        "source": "urn:opendatagraph:governance",
+        "type": f"com.opendatagraph.{delivery.event_type}",
+        "subject": f"{delivery.tenant_id}/{endpoint.endpoint_id}",
+        "time": timestamp,
+        "datacontenttype": "application/json",
+        "data": payload,
+    }
 
 
 def _cef_escape(value: str) -> str:

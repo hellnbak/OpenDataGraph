@@ -12,7 +12,7 @@ Graph endpoints and replayed delta cursors must use HTTPS and a host listed in `
 
 Site, drive, and item identity; item name and web URL; MIME type and size; creator identity when available; provider creation and modification timestamps; parent path; and ETag. Raw file content is not downloaded.
 
-Public-link permissions are not evaluated in v1.8. `public_access` remains false and `metadata.public_access_evidence` is `not-evaluated`; this is not proof that an item is private.
+Public-link permissions are not evaluated in v1.9. `public_access` remains false and `metadata.public_access_evidence` is `not-evaluated`; this is not proof that an item is private.
 
 ## Pagination and rate limits
 

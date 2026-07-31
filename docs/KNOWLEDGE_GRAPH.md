@@ -2,7 +2,7 @@
 
 OpenDataGraph stores directed, tenant-scoped relationships in the primary relational database.
 
-v1.8 also projects declared and observed AI resource relationships into this graph while retaining expected state and idempotent observation history in dedicated relational tables.
+v1.9 also projects declared and observed AI resource relationships into this graph while retaining expected state and idempotent observation history in dedicated relational tables.
 
 Common relationships include:
 

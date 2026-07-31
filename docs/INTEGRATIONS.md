@@ -12,10 +12,17 @@ Events are limited to 256 KiB before delivery records and jobs are created. Supp
 - `cloudevents`: CloudEvents 1.0 structured JSON;
 - `cef`: Common Event Format text with escaped extension values;
 - `splunk-hec`: Splunk HTTP Event Collector JSON.
+- `kafka-rest`: CloudEvents 1.0 values wrapped in a Kafka REST Proxy JSON `records` request and keyed by tenant.
 
 Secrets use `env:` or `file:` references and are never stored in delivery payloads. Native, CloudEvents, and CEF workers sign the exact request body using HMAC-SHA256 in `X-OpenDataGraph-Signature`. Splunk HEC uses the resolved secret in `Authorization: Splunk ...`; use a dedicated least-privilege HEC token.
 
 Every delivery includes `X-OpenDataGraph-Delivery`, `X-OpenDataGraph-Event`, `X-OpenDataGraph-Mode`, and `X-OpenDataGraph-Format`.
+
+## Transactional governance outbox
+
+Runtime authorization, enforcement, rollout, and GenAI telemetry operations add bounded metadata-only events to `governance_outbox_events` in the same transaction as their authoritative record. Workers atomically claim pending events, recover stale claims, retry with bounded backoff, and stop at `ODG_GOVERNANCE_OUTBOX_MAX_ATTEMPTS`. The outbox creates normal integration deliveries with event-level idempotency, so existing delivery retries and dead-letter controls still apply.
+
+Outbox payloads reject secret-, credential-, prompt-, response-, and token-named fields and are limited to 64 KiB. Auditors can inspect outbox state; administrators can request bounded manual dispatch for operational recovery.
 
 ## Delivery lifecycle
 
@@ -38,6 +45,8 @@ Only failed or dead-letter deliveries can be replayed, and the endpoint must sti
 - `GET /api/v1/integrations/deliveries`
 - `GET /api/v1/integrations/dashboard`
 - `POST /api/v1/integrations/deliveries/{delivery_id}/replay`
+- `GET /api/v1/integrations/outbox`
+- `POST /api/v1/integrations/outbox/dispatch`
 
 The dashboard reports tenant-wide status counts, success rate, and endpoint totals. Restrict endpoint management and replay to administrators and review dead-letter alerts operationally.
 

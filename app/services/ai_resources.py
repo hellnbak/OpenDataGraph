@@ -34,6 +34,7 @@ def create_ai_resource(
     tenant_id: str,
     values: dict,
     created_by: str,
+    commit: bool = True,
 ) -> AIResource:
     metadata = _bounded_metadata(values.pop("metadata", {}))
     resource = AIResource(
@@ -43,8 +44,11 @@ def create_ai_resource(
         **values,
     )
     db.add(resource)
-    db.commit()
-    db.refresh(resource)
+    if commit:
+        db.commit()
+        db.refresh(resource)
+    else:
+        db.flush()
     return resource
 
 
@@ -136,6 +140,7 @@ def observe_relationship(
     observed_at,
     metadata: dict,
     recorded_by: str,
+    commit: bool = True,
 ) -> tuple[AILineageObservation, AIResourceRelationship, bool]:
     existing_event = db.scalar(
         select(AILineageObservation).where(
@@ -202,9 +207,12 @@ def observe_relationship(
     )
     db.add(observation)
     _sync_graph_edge(db, relation)
-    db.commit()
-    db.refresh(observation)
-    db.refresh(relation)
+    if commit:
+        db.commit()
+        db.refresh(observation)
+        db.refresh(relation)
+    else:
+        db.flush()
     return observation, relation, False
 
 

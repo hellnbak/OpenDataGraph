@@ -1,17 +1,21 @@
 # Runtime Authorization
 
-OpenDataGraph v1.8 exposes a policy-decision point using the subject, resource, action, context, decision, default-value, and batch-semantics shapes from the [OpenID AuthZEN Authorization API 1.0](https://openid.net/specs/authorization-api-1_0.html).
+OpenDataGraph v1.9 exposes a policy-decision point using the subject, resource, action, context, decision, default-value, batch-semantics, and search shapes from the [OpenID AuthZEN Authorization API 1.0](https://openid.net/specs/authorization-api-1_0.html).
 
 ## Endpoints
 
 - `GET /.well-known/authzen-configuration`
 - `POST /access/v1/evaluation`
 - `POST /access/v1/evaluations`
+- `POST /access/v1/search/subject`
+- `POST /access/v1/search/resource`
+- `POST /access/v1/search/action`
 - `GET /api/v1/runtime/decision-receipts`
 - `GET /api/v1/runtime/decision-receipts/{receipt_id}`
 - `POST /api/v1/runtime/decision-receipts/{receipt_id}/verify`
+- `POST|GET /api/v1/runtime/enforcement-events`
 
-The well-known document advertises only the implemented single and batch evaluation endpoints. AuthZEN search APIs and signed PDP metadata are not implemented. Configure `ODG_PUBLIC_BASE_URL` to the externally reachable HTTPS PDP identifier in shared deployments.
+The well-known document advertises implemented evaluation and search endpoints. Signed PDP metadata is not implemented. Configure `ODG_PUBLIC_BASE_URL` to the externally reachable HTTPS PDP identifier in shared deployments.
 
 Evaluation requires the `analyst` role. Receipt listing and verification require `auditor`. The normal tenant-bound API key, service account, human OIDC, or workload identity mechanisms authenticate the PDP request; authorization transport is separate from the access decision itself.
 
@@ -46,7 +50,7 @@ The response preserves the required boolean decision and uses AuthZEN decision c
     "policy_decision": "conditional",
     "enforcement_mode": "enforce",
     "risk_score": 70,
-    "policy_version": "1.8.0",
+    "policy_version": "1.9.0",
     "matched_policies": ["require-approval-for-training"],
     "reasons": ["Training use requires explicit data-owner approval and a documented retention boundary."],
     "obligations": [
@@ -80,6 +84,10 @@ A conditional policy result is a permit with obligations. A policy-enforcement p
 - `permit_on_first_permit`
 
 The default limit is 100 evaluations, the hard limit is 1,000, each resolved evaluation is limited to 64 KiB, and the complete batch is limited to 2 MiB. A batch commits all generated receipts in one transaction and reuses repeated subject, data asset, and AI resource lookups within the request. Indexed receipt and request identifiers receive an item suffix.
+
+## Search
+
+Search endpoints return subjects, resources, or actions that receive a non-deny policy result for the supplied fixed entities and context. They create no decision receipt and are discovery aids rather than enforcement evidence. Results are bounded by `ODG_AUTHZEN_SEARCH_MAX`; pagination tokens are opaque, authenticated, and bound to the tenant, search kind, complete request, and offset. Shared deployments must provide a strong externally managed `ODG_AUTHZEN_PAGINATION_SECRET`.
 
 ## Enforcement modes
 
@@ -119,6 +127,8 @@ Verification reports:
 
 Unsigned or pending receipts can be integrity-valid without being cryptographically signed or trusted.
 
+v1.9 receipt manifest format 2 also records a digest of an allowlisted replay context and rollout baseline-versus-candidate results. The relational receipt records replay eligibility and the bounded context used for simulation. Replay context excludes arbitrary properties and content. Existing format 1 receipts remain verifiable. See [Policy rollouts](POLICY_ROLLOUTS.md) and [Production enforcement](PRODUCTION_ENFORCEMENT.md).
+
 ## Configuration
 
 | Setting | Default | Purpose |
@@ -126,7 +136,10 @@ Unsigned or pending receipts can be integrity-valid without being cryptographica
 | `ODG_PUBLIC_BASE_URL` | derived request URL | External PDP identifier and endpoint base |
 | `ODG_RUNTIME_AUTHORIZATION_MODE` | `enforce` | Observe, warn, or enforce |
 | `ODG_RUNTIME_AUTHORIZATION_BATCH_MAX` | `100` | Accepted batch evaluations, hard-capped at 1,000 |
+| `ODG_AUTHZEN_SEARCH_MAX` | `100` | Search results per page, hard-capped at 500 |
+| `ODG_AUTHZEN_PAGINATION_SECRET` | empty | HMAC secret required for shared AuthZEN search pagination |
 | `ODG_POLICY_CACHE_SECONDS` | `5` | Per-process effective-policy cache interval |
+| `ODG_POLICY_ROLLOUT_CACHE_SECONDS` | `5` | Per-process active rollout cache interval |
 | `ODG_RUNTIME_RECEIPT_RETENTION_DAYS` | `90` | Receipt retention from issuance |
 | `ODG_RUNTIME_RECEIPT_SIGNING_PROFILE` | empty | Deferred signer profile |
 | `ODG_RUNTIME_RECEIPT_SIGNING_BATCH_SIZE` | `100` | Maximum claims per worker pass |

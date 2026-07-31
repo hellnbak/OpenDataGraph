@@ -37,17 +37,25 @@ The `search` parameter uses OpenSearch when configured and database fallback oth
 - `DELETE /api/v1/policy/exceptions/{exception_id}`
 - `POST /api/v1/policy/exceptions/{exception_id}/renewal`
 - `POST /api/v1/policy/exceptions/{exception_id}/renewal/approve`
+- `POST|GET /api/v1/policy/rollouts`
+- `GET /api/v1/policy/rollouts/{rollout_id}`
+- `POST /api/v1/policy/rollouts/{rollout_id}/advance`
+- `POST|GET /api/v1/policy/rollouts/{rollout_id}/replays`
 
 ## Runtime authorization
 
 - `GET /.well-known/authzen-configuration`
 - `POST /access/v1/evaluation`
 - `POST /access/v1/evaluations`
+- `POST /access/v1/search/subject`
+- `POST /access/v1/search/resource`
+- `POST /access/v1/search/action`
 - `GET /api/v1/runtime/decision-receipts`
 - `GET /api/v1/runtime/decision-receipts/{receipt_id}`
 - `POST /api/v1/runtime/decision-receipts/{receipt_id}/verify`
+- `POST|GET /api/v1/runtime/enforcement-events`
 
-The access endpoints use AuthZEN Authorization API 1.0 subject, action, resource, context, decision, default, and batch-semantics shapes. Decision context includes OpenDataGraph policy obligations and receipt metadata. The default batch limit is 100 and can be raised to the hard limit of 1,000. `X-Request-ID` provides correlation; optional `Idempotency-Key` prevents duplicate receipts for an identical canonical request.
+The access endpoints use AuthZEN Authorization API 1.0 subject, action, resource, context, decision, default, batch-semantics, and search shapes. Decision context includes OpenDataGraph policy obligations and receipt metadata. The default batch limit is 100 and can be raised to the hard limit of 1,000. `X-Request-ID` provides correlation; optional `Idempotency-Key` prevents duplicate receipts for an identical canonical request. Search is receipt-free and uses opaque request-bound pagination.
 
 ## Connectors and jobs
 
@@ -92,6 +100,9 @@ Synchronous dynamic connector types are `github`, `gitlab`, and `sharepoint`. Qu
 - `POST|GET /api/v1/ai/lineage/relationships`
 - `POST /api/v1/ai/lineage/observations`
 - `GET /api/v1/ai/lineage/drift`
+- `POST /v1/traces`
+- `POST /api/v1/telemetry/genai/otlp`
+- `GET /api/v1/telemetry/genai/events`
 
 ## Evidence
 
@@ -115,8 +126,10 @@ Synchronous dynamic connector types are `github`, `gitlab`, and `sharepoint`. Qu
 - `GET /api/v1/integrations/deliveries`
 - `GET /api/v1/integrations/dashboard`
 - `POST /api/v1/integrations/deliveries/{delivery_id}/replay`
+- `GET /api/v1/integrations/outbox`
+- `POST /api/v1/integrations/outbox/dispatch`
 
-Endpoints choose `native`, `cloudevents`, `cef`, or `splunk-hec` event format. Existing endpoints default to `native`.
+Endpoints choose `native`, `cloudevents`, `kafka-rest`, `cef`, or `splunk-hec` event format. Existing endpoints default to `native`.
 
 ## Service accounts
 
@@ -141,6 +154,8 @@ Creation and rotation return a clear credential exactly once. Read responses nev
 - `GET /api/v1/governance/evidence-packages/{package_id}/download`
 - `GET /api/v1/governance/evidence-signing`
 - `POST /api/v1/governance/evidence-packages/{package_id}/verify`
+- `GET /api/v1/governance/frameworks`
+- `POST /api/v1/governance/frameworks/{framework_id}/coverage`
 - `POST|GET /api/v1/ownership/campaigns`
 - `GET /api/v1/ownership/campaigns/{campaign_id}`
 - `POST /api/v1/ownership/campaigns/{campaign_id}/launch`
@@ -154,6 +169,12 @@ Creation and rotation return a clear credential exactly once. Read responses nev
 - `PATCH /api/v1/ownership/escalation-policies/{policy_id}`
 - `GET /api/v1/ownership/escalation-events`
 - `GET /api/v1/ownership/analytics/trends`
+
+## Remote MCP preview
+
+- `POST /mcp`
+
+The stateless preview is disabled by default, requires `MCP-Protocol-Version: 2026-07-28`, and in authenticated deployments accepts only an OIDC bearer identity with at least `analyst`. It supports `server/discover`, `tools/list`, and a bounded `tools/call` catalog. It does not maintain sessions or expose administration tools.
 
 ## Authentication
 

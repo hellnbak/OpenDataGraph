@@ -10,6 +10,7 @@ from .services.ownership import (
     enqueue_due_ownership_campaigns,
     enqueue_due_ownership_escalations,
 )
+from .services.outbox import dispatch_outbox_events
 from .services.runtime_authorization import (
     process_pending_receipts,
     purge_expired_receipts,
@@ -50,6 +51,7 @@ def run() -> None:
                 db,
                 settings.runtime_receipt_signing_batch_size,
             )
+            dispatch_outbox_events(db, settings.governance_outbox_batch_size)
             if time.monotonic() >= next_receipt_purge:
                 purge_expired_receipts(
                     db,

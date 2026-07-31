@@ -1,0 +1,29 @@
+id: nist-ai-rmf-1.0
+title: NIST AI Risk Management Framework 1.0
+source: NIST AI 100-1
+disclaimer: Coverage reports identify available OpenDataGraph evidence and gaps; they do not certify compliance.
+controls:
+  - id: GOVERN-1
+    function: GOVERN
+    title: AI assets and accountability are inventoried
+    evidence_types: [ai_resources, ai_agents]
+  - id: MAP-1
+    function: MAP
+    title: Data, models, and runtime relationships are documented
+    evidence_types: [ai_resources, ai_lineage]
+  - id: MEASURE-1
+    function: MEASURE
+    title: AI use is evaluated and monitored
+    evidence_types: [runtime_receipts, genai_telemetry]
+  - id: MANAGE-1
+    function: MANAGE
+    title: Policy decisions are enforced and evidenced
+    evidence_types: [enforcement_events, policy_rollouts]
+  - id: GOVERN-2
+    function: GOVERN
+    title: Policy changes follow governed rollout workflows
+    evidence_types: [policy_bundles, policy_rollouts]
+  - id: MEASURE-2
+    function: MEASURE
+    title: Authorization evidence is retained for review
+    evidence_types: [runtime_receipts, enforcement_events]

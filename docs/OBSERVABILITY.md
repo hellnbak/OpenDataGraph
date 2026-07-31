@@ -1,6 +1,6 @@
 # Observability
 
-OpenDataGraph v1.8 exposes health, readiness, metrics, structured logs, delivery dashboards, governance SLA, posture and ownership trend analytics, lifecycle reporting, runtime authorization telemetry, and optional traces.
+OpenDataGraph v1.9 exposes health, readiness, metrics, structured logs, delivery and outbox state, governance SLA, framework coverage, posture and ownership trend analytics, lifecycle reporting, runtime authorization telemetry, and optional trace export.
 
 ## Endpoints
 
@@ -10,7 +10,7 @@ OpenDataGraph v1.8 exposes health, readiness, metrics, structured logs, delivery
 
 Restrict `/metrics` at the network layer in shared deployments.
 
-Runtime metrics include `odg_runtime_authorization_decisions_total{mode,policy_decision,decision}` and `odg_runtime_authorization_evaluation_seconds`. HTTP request latency includes receipt commit time; the policy-evaluation histogram does not.
+Runtime metrics include `odg_runtime_authorization_decisions_total{mode,policy_decision,decision}`, `odg_runtime_authorization_evaluation_seconds`, `odg_runtime_enforcement_events_total{outcome}`, `odg_policy_rollout_events_total{event,stage}`, `odg_genai_telemetry_spans_total{result}`, and `odg_governance_outbox_events_total{outcome}`. HTTP request latency includes receipt and outbox commit time; the policy-evaluation histogram does not.
 
 ## Logs
 
@@ -22,10 +22,10 @@ Clients may supply `X-Request-ID`; otherwise the API generates one and returns i
 
 Set `OTEL_EXPORTER_OTLP_ENDPOINT` to enable OTLP HTTP trace export. `OTEL_SERVICE_NAME` controls the service resource name. Send traces only to an approved TLS-protected collector.
 
-The FastAPI instrumentation excludes health, readiness, and metrics paths. OpenDataGraph does not attach prompts, responses, tool arguments, evidence bytes, or credentials to spans.
+The FastAPI instrumentation excludes health, readiness, and metrics paths. OpenDataGraph does not attach prompts, responses, tool arguments, evidence bytes, or credentials to spans. Inbound GenAI telemetry at `/v1/traces` is separate from application trace export; see [GenAI telemetry](GENAI_TELEMETRY.md).
 
 ## Operational dashboards
 
-`GET /api/v1/integrations/dashboard` returns tenant-scoped delivery totals, status counts, success rate, and endpoint summaries. `GET /api/v1/governance/sla` reports review deadlines and resolution time. `GET /api/v1/service-accounts/lifecycle` reports stale accounts, expiry, and rotations. The console summary surfaces these queues with ownership work and graph exports.
+`GET /api/v1/integrations/dashboard` returns tenant-scoped delivery totals, status counts, success rate, and endpoint summaries. `GET /api/v1/integrations/outbox` exposes governance event dispatch state. `GET /api/v1/telemetry/genai/events` exposes metadata-only model activity. `GET /api/v1/governance/sla` reports review deadlines and resolution time. `GET /api/v1/service-accounts/lifecycle` reports stale accounts, expiry, and rotations. Framework coverage reports expose evidence gaps without compliance claims.
 
-Alert on dead letters, overdue governance reviews, repeatedly failed governance or export jobs, stale service accounts, expiring credentials, stalled deprovisioning workflows, growing disposition or remediation queues, and export storage failures.
+Alert on dead letters, failed or stale outbox claims, permitted receipts missing enforcement evidence, enforcement failures, rollout deny deltas, telemetry rejection and discovery backlogs, overdue governance reviews, repeatedly failed governance or export jobs, stale service accounts, expiring credentials, stalled deprovisioning workflows, growing disposition or remediation queues, and export storage failures.

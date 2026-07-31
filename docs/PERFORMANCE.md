@@ -14,8 +14,8 @@ The command creates an isolated in-memory SQLite schema, loads synthetic assets,
 
 - filtered catalog reads;
 - bounded graph traversal;
-- runtime authorization with one durable decision receipt commit;
-- ten-item runtime authorization batches with one receipt transaction.
+- runtime authorization with one durable decision receipt and outbox commit;
+- ten-item runtime authorization batches with one receipt and outbox transaction.
 
 Inputs are bounded. The result is useful for code-change comparison on the same machine; it is not a production capacity result.
 
@@ -67,7 +67,7 @@ For a production-like qualification:
 2. Run migrations and warm search indexes before measurement.
 3. Exercise API and worker replicas separately and together.
 4. Measure connector and ownership schedules, governance notifications and packages, integration delivery, evidence operations, and graph exports with synthetic metadata.
-5. Monitor database connections, commit latency, query latency, runtime authorization rate, decision distribution, signing and purge lag, worker queue depth, retries, memory, CPU, storage latency, and external rate limits.
+5. Monitor database connections, commit latency, query latency, runtime authorization rate, decision distribution, rollout comparison cost, enforcement failures, telemetry ingestion and discovery, outbox and signing lag, purge lag, worker queue depth, retries, memory, CPU, storage latency, and external rate limits.
 6. Run a read-only soak for the intended observation period and a separate approved workload test for mutation paths.
 7. Record environment, data volume, configuration, commit or release version, result, and acceptance threshold.
 

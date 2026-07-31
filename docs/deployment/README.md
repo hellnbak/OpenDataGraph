@@ -30,6 +30,7 @@ The chart is under `deploy/helm/opendatagraph`. It requires a pre-created Kubern
 - `ODG_WORKLOAD_EXCHANGE_PROFILES_JSON`
 - `ODG_GOVERNANCE_PACKAGE_SIGNING_PROFILES_JSON`
 - `ODG_GOVERNANCE_PACKAGE_VERIFICATION_PROFILES_JSON`
+- `ODG_AUTHZEN_PAGINATION_SECRET`
 - `ODG_SCIM_TOKENS_JSON`
 - `ODG_OPENSEARCH_URL`
 - `ODG_EVIDENCE_BUCKET`
@@ -43,13 +44,15 @@ The migration hook runs before install and upgrade. The chart deploys multiple A
 
 ## Runtime authorization and capacity
 
-Set `config.publicBaseUrl` to the externally reachable HTTPS policy-decision point URL. The well-known AuthZEN document derives both evaluation endpoints from this value. Keep `config.runtimeAuthorizationMode=enforce` for shared deployments; `warn` and `observe` are migration modes.
+Set `config.publicBaseUrl` to the externally reachable HTTPS policy-decision point URL. The well-known AuthZEN document derives evaluation and search endpoints from this value. Keep `config.runtimeAuthorizationMode=enforce` for shared deployments; `warn` and `observe` are migration modes.
 
-Review batch size, receipt retention, signing profile, signing batch size, retry count, and purge batch size before enabling runtime traffic. Receipt signing profiles and verification trust profiles remain in the Kubernetes Secret. A configured receipt signing profile must reference key material mounted under approved secret roots or a least-privilege KMS identity available to workers.
+Review batch and search size, pagination secret, rollout cache, receipt retention, signing profile, signing batch size, retry count, purge batch size, telemetry batch size, and outbox claim and retry limits before enabling runtime traffic. Receipt signing profiles and verification trust profiles remain in the Kubernetes Secret. A configured receipt signing profile must reference key material mounted under approved secret roots or a least-privilege KMS identity available to workers.
 
 Database pool limits apply per API or worker process. Multiply `databasePoolSize + databaseMaxOverflow` by the maximum simultaneous API and worker replica count, including rollout and autoscaling overlap, then reserve database connections for migrations, monitoring, failover, and administration. Tune against measured commit latency and query plans rather than connection count alone.
 
-Runtime receipts are durable synchronous PostgreSQL writes. API replicas can scale horizontally until database commit, pool, lock, or I/O limits dominate. Signing claims scale across workers, but KMS or Sigstore quotas can become the next bottleneck. See [Scaling](../SCALING.md).
+Runtime receipts and their governance outbox records are durable synchronous PostgreSQL writes. API replicas can scale horizontally until database commit, pool, lock, or I/O limits dominate. Shadow and canary requests perform baseline and candidate evaluation. Signing and outbox claims scale across workers, but KMS, Sigstore, downstream endpoint, or database quotas can become the next bottleneck. See [Scaling](../SCALING.md).
+
+Keep remote MCP disabled unless required. When enabled, configure `config.remoteMcpDefaultAgentKey`, OIDC issuer and audience validation, TLS, body and rate limits, and ingress only for the intended clients. The gateway is stateless and does not replace identity-aware ingress. Route GenAI OTLP JSON through an authenticated collector that performs filtering, sampling, batching, and retry.
 
 Provider and integration endpoints must use HTTPS and match exact host allowlists in chart configuration. OIDC discovery uses the configured issuer host; explicitly approve any different JWKS host. Add self-hosted provider domains explicitly and keep network-policy egress aligned with the same lists.
 
@@ -73,7 +76,7 @@ The Helm default uses `ODG_GOVERNANCE_PACKAGE_BACKEND=s3`; provide `ODG_GOVERNAN
 
 ## Observability
 
-Collect `/metrics` through an internal scrape path. Set `OTEL_EXPORTER_OTLP_ENDPOINT` for an approved OTLP HTTP collector. Route JSON logs to centralized storage and alert on readiness failure, job failures, connector errors, elevated policy denies, runtime authorization latency and errors, receipt signing and purge lag, lineage drift, database saturation, OpenSearch health, and evidence write failures.
+Collect `/metrics` through an internal scrape path. Set `OTEL_EXPORTER_OTLP_ENDPOINT` for an approved OTLP HTTP collector. Route JSON logs to centralized storage and alert on readiness failure, job failures, connector errors, elevated policy denies, enforcement failures, rollout deltas, telemetry rejection, outbox lag, runtime authorization latency and errors, receipt signing and purge lag, lineage drift, database saturation, OpenSearch health, and evidence write failures.
 
 ## Backup and recovery
 
@@ -84,7 +87,11 @@ Use `python -m app.operations backup` for application-coordinated recovery testi
 - TLS and identity-aware ingress
 - `ODG_AUTH_DISABLED=false`
 - tenant-bound, role-scoped identities
-- externally correct HTTPS `ODG_PUBLIC_BASE_URL`, enforced runtime mode, bounded batches, receipt retention, and signing trust
+- externally correct HTTPS `ODG_PUBLIC_BASE_URL`, enforced runtime mode, bounded batches and search, protected pagination secret, receipt retention, and signing trust
+- fail-closed PEP obligation handling, enforcement-event monitoring, and measured rollout promotion
+- metadata-only OTLP collector filtering, authentication, batching, rate limits, and model-review ownership
+- outbox lag, retry, fan-out, destination quota, and failure monitoring
+- remote MCP disabled or protected by OIDC bearer validation, fixed agent identity, TLS, network policy, and rate limits
 - managed PostgreSQL, OpenSearch, and S3-compatible evidence
 - external secret management and workload identity
 - connector egress restrictions

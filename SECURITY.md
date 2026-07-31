@@ -2,7 +2,7 @@
 
 ## Supported version
 
-Only the latest Runtime Governance and Scale Preview release receives security fixes.
+Only the latest Production Enforcement and Fleet Governance Preview release receives security fixes.
 
 ## Reporting
 
@@ -10,7 +10,7 @@ Report suspected vulnerabilities through a monitored private security contact. D
 
 ## Deployment warning
 
-OpenDataGraph v1.8 adds runtime authorization, durable decision receipts, deferred signing, governed MCP access, AI resource registration, lineage drift, and scale qualification, but it remains a preview. Do not expose it directly to the public internet or connect sensitive production sources without TLS, identity-aware ingress, external secret management, network restrictions, tested backups, centralized telemetry, and reviewed identity, runtime mode, receipt, signing, retention, ownership, export, package, connector, and integration configuration.
+OpenDataGraph v1.9 adds production enforcement evidence, policy rollout, metadata-only GenAI telemetry, a transactional outbox, and a stateless remote MCP preview, but it remains a preview. Do not expose it directly to the public internet or connect sensitive production sources without TLS, identity-aware ingress, external secret management, rate and size controls, network restrictions, tested backups, centralized telemetry, and reviewed identity, runtime mode, receipt, enforcement, rollout, signing, retention, MCP, ownership, export, package, connector, and integration configuration.
 
 ## Credentials
 
@@ -27,6 +27,7 @@ OpenDataGraph v1.8 adds runtime authorization, durable decision receipts, deferr
 - Keep outbound workload exchange subject tokens under approved secret roots, use one destination-specific audience and role per profile, enforce a maximum one-hour credential lifetime, and never log exchange response bodies.
 - Keep evidence signing keys outside configuration and databases. Separate signing authority from verification trust and rotate retained public trust material according to package retention.
 - Keep runtime receipt signing keys outside configuration and databases. Treat authorization identifiers and reasons as sensitive metadata, and never place prompts, responses, content, tokens, or credentials in AuthZEN identifiers or properties.
+- Store `ODG_AUTHZEN_PAGINATION_SECRET` in external secret management, rotate it with a controlled search-token invalidation window, and never place it in a Helm ConfigMap.
 - Store one-time service-account keys directly in approved secret management, assign the least-privileged role, monitor expiry and inactivity, and use bounded rotation overlap.
 - Treat Splunk HEC references as authorization tokens and do not reuse webhook HMAC secrets.
 - Rotate credentials after suspected disclosure.
@@ -35,20 +36,20 @@ OpenDataGraph v1.8 adds runtime authorization, durable decision receipts, deferr
 
 - Bind every API key to a single `tenant_id`.
 - Never trust a caller-supplied tenant header or request field.
-- Preserve tenant filters on object lookup, listing, idempotency, runtime receipts, AI resources and lineage, graph traversal and export, jobs, evidence retrieval and disposition, integration replay, service accounts, governance reviews and packages, ownership campaigns and schedules, and identity workflows.
+- Preserve tenant filters on object lookup, listing, idempotency, runtime receipts, enforcement, rollout, replay, GenAI telemetry, AI resources and lineage, graph traversal and export, jobs, evidence retrieval and disposition, outbox and integration replay, service accounts, governance reviews and packages, ownership campaigns and schedules, and identity workflows.
 - Use separate databases for strict regulatory or cryptographic isolation requirements.
 
 ## Data handling
 
-Connectors are metadata-first. Sampled content remains disabled unless source scope, byte limits, processing location, retention, and access are explicitly approved. Capability policy is a declaration gate, not a plugin sandbox; external connector packages require code, dependency, permission, and provenance review. The PostgreSQL connector does not query table rows and must use least-privilege metadata visibility. OpenSearch documents exclude sampled content. Evidence uploads are bounded, retention-governed, and should contain only approved audit material. Governance packages include selected metadata only. Package signatures detect change and signer identity but do not provide confidentiality, retention, or storage immutability. Application legal hold and disposition approval do not replace provider Object Lock; verification must succeed before operators rely on storage enforcement.
+Connectors are metadata-first. Sampled content remains disabled unless source scope, byte limits, processing location, retention, and access are explicitly approved. Capability policy is a declaration gate, not a plugin sandbox; external connector packages require code, dependency, permission, and provenance review. The PostgreSQL connector does not query table rows and must use least-privilege metadata visibility. OpenSearch documents exclude sampled content. GenAI telemetry discards known prompt, response, message, instruction, tool-argument, and tool-result attributes and stores only normalized fields and a metadata digest; collectors must filter additional organization-specific content attributes before export. Evidence uploads are bounded, retention-governed, and should contain only approved audit material. Governance packages include selected metadata only. Package signatures detect change and signer identity but do not provide confidentiality, retention, or storage immutability. Application legal hold and disposition approval do not replace provider Object Lock; verification must succeed before operators rely on storage enforcement.
 
 ## Operational endpoints
 
-`/metrics` contains aggregate process telemetry and must be network-restricted in shared deployments. Structured logs exclude bodies and credentials. OTLP collectors must use TLS and approved authentication. `/health` and `/ready` do not expose tenant counts.
+`/metrics` contains aggregate process telemetry and must be network-restricted in shared deployments. Structured logs exclude bodies and credentials. OTLP export and GenAI ingestion must use TLS and approved authentication; rate-limit `/v1/traces`, AuthZEN search, and `/mcp`. `/health` and `/ready` do not expose tenant counts.
 
 ## Authentication
 
-`ODG_AUTH_DISABLED=true` is trusted local-development behavior only. Shared deployments must enable authentication, configure exact human and workload OIDC issuer, audience, JWKS, tenant, and role trust, and keep SCIM credentials separate. API keys and service accounts remain available for bounded service integrations. Service-account verifiers are not recoverable credentials, but database access still requires strong protection.
+`ODG_AUTH_DISABLED=true` is trusted local-development behavior only. Shared deployments must enable authentication, configure exact human and workload OIDC issuer, audience, JWKS, tenant, and role trust, and keep SCIM credentials separate. API keys and service accounts remain available for bounded service integrations. The remote MCP preview accepts only OIDC bearer authentication and does not implement a separate OAuth authorization server. Service-account verifiers are not recoverable credentials, but database access still requires strong protection.
 
 ## Outbound integrations
 

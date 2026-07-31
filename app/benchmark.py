@@ -9,7 +9,13 @@ from sqlalchemy import create_engine, delete, select
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
-from app.models import AIAgent, DataAsset, GraphEdge, RuntimeDecisionReceipt
+from app.models import (
+    AIAgent,
+    DataAsset,
+    GovernanceOutboxEvent,
+    GraphEdge,
+    RuntimeDecisionReceipt,
+)
 from app.schemas import AuthZENEvaluationRequest
 from app.services.graph import query_graph
 from app.services.runtime_authorization import evaluate_access
@@ -98,6 +104,11 @@ def run_benchmark(
             )
         finally:
             if database_url:
+                db.execute(
+                    delete(GovernanceOutboxEvent).where(
+                        GovernanceOutboxEvent.tenant_id == tenant_id
+                    )
+                )
                 db.execute(
                     delete(RuntimeDecisionReceipt).where(
                         RuntimeDecisionReceipt.tenant_id == tenant_id

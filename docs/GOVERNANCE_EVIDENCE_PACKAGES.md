@@ -1,6 +1,8 @@
 # Governance Analytics and Evidence Packages
 
-OpenDataGraph v1.8 provides tenant-scoped governance posture analytics and asynchronous metadata-only evidence packages with optional cryptographic signing and independent trust verification.
+OpenDataGraph v1.9 provides tenant-scoped governance posture analytics and asynchronous metadata-only evidence packages with optional cryptographic signing and independent trust verification.
+
+v1.9 package categories also include `runtime-enforcement`, `policy-rollouts`, `genai-telemetry`, and `governance-outbox`. Telemetry sections contain normalized fields and metadata digests only; outbox sections omit event payloads. Runtime receipt sections include replay eligibility and rollout comparison fields.
 
 ## Analytics
 

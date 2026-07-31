@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opendatagraph-enforcement"
+version = "1.9.0"
+description = "Policy enforcement point SDK for OpenDataGraph runtime authorization"
+requires-python = ">=3.10"
+license = {text = "FSL-1.1-ALv2"}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["opendatagraph_enforcement*"]

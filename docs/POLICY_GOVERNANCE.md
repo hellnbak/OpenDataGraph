@@ -10,6 +10,8 @@ Data owners create and submit bundles. Administrators or eligible delegated appr
 
 `GET /api/v1/policy/bundles/{bundle_id}/diff` compares a bundle with the previous version of the same name. `against_bundle_id` selects another tenant bundle explicitly.
 
+Approved bundles can enter the v1.9 shadow, replay, canary, pause, and promotion workflow instead of immediate activation. See [Policy rollouts](POLICY_ROLLOUTS.md). Existing direct activation remains available for compatibility, but shared deployments should prefer measured rollout for material changes.
+
 The response reports added and removed policy definitions plus field-level before and after values for changed policies. Policy IDs remain the stable comparison key.
 
 ## Delegated approvers

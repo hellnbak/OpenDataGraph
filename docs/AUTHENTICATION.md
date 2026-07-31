@@ -1,6 +1,6 @@
 # Authentication and Tenancy
 
-OpenDataGraph v1.8 binds each API-key, service account, validated human OIDC principal, or short-lived workload identity to a role and tenant.
+OpenDataGraph v1.9 binds each API-key, service account, validated human OIDC principal, or short-lived workload identity to a role and tenant.
 
 ## Local mode
 
@@ -59,6 +59,8 @@ SCIM provisioning uses separate bearer tokens bound to tenants in `ODG_SCIM_TOKE
 
 ## Isolation behavior
 
-Tenant filters apply to assets, agents, policy audits and bundles, runtime receipts, AI resources and lineage, delegations, exceptions, connector runs and schedules, classification reviews, AI usage events, OpenLineage, graph edges and exports, jobs, evidence and dispositions, integrations and deliveries, SCIM resources and deprovisioning workflows, service accounts, governance reviews and packages, and ownership campaigns and schedules. Cross-tenant object identifiers return `404` rather than revealing that the object exists.
+Tenant filters apply to assets, agents, policy audits, bundles, rollouts and replays, runtime receipts and enforcement events, GenAI telemetry, AI resources and lineage, delegations, exceptions, connector runs and schedules, classification reviews, AI usage events, OpenLineage, graph edges and exports, jobs, evidence and dispositions, integration outbox events and deliveries, SCIM resources and deprovisioning workflows, service accounts, governance reviews and packages, and ownership campaigns and schedules. Cross-tenant object identifiers return `404` rather than revealing that the object exists.
+
+The opt-in remote MCP preview requires an OIDC bearer token in authenticated deployments even if another credential type could satisfy the route role. Configure issuer, audience, tenant claim, role claim, discovery, and JWKS restrictions as described above; the gateway does not perform a separate MCP OAuth flow.
 
 Use separate databases when policy requires physical, cryptographic, regional, or customer-managed-key isolation.

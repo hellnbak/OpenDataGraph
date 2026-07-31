@@ -79,6 +79,15 @@ class Settings:
         "ODG_RUNTIME_AUTHORIZATION_BATCH_MAX",
         100,
     )
+    authzen_search_max = _integer("ODG_AUTHZEN_SEARCH_MAX", 100)
+    authzen_pagination_secret = os.getenv(
+        "ODG_AUTHZEN_PAGINATION_SECRET",
+        "",
+    )
+    policy_rollout_cache_seconds = _integer(
+        "ODG_POLICY_ROLLOUT_CACHE_SECONDS",
+        5,
+    )
     runtime_receipt_retention_days = _integer(
         "ODG_RUNTIME_RECEIPT_RETENTION_DAYS",
         90,
@@ -98,6 +107,24 @@ class Settings:
     runtime_receipt_purge_batch_size = _integer(
         "ODG_RUNTIME_RECEIPT_PURGE_BATCH_SIZE",
         10_000,
+    )
+    genai_telemetry_batch_max = _integer(
+        "ODG_GENAI_TELEMETRY_BATCH_MAX",
+        1000,
+    )
+    governance_outbox_batch_size = _integer(
+        "ODG_GOVERNANCE_OUTBOX_BATCH_SIZE",
+        100,
+    )
+    governance_outbox_max_attempts = _integer(
+        "ODG_GOVERNANCE_OUTBOX_MAX_ATTEMPTS",
+        5,
+    )
+    remote_mcp_enabled = _boolean("ODG_REMOTE_MCP_ENABLED", False)
+    remote_mcp_tool_ttl_ms = _integer("ODG_REMOTE_MCP_TOOL_TTL_MS", 60_000)
+    remote_mcp_default_agent_key = os.getenv(
+        "ODG_REMOTE_MCP_DEFAULT_AGENT_KEY",
+        "",
     )
     search_backend = os.getenv("ODG_SEARCH_BACKEND", "database").lower()
     opensearch_url = os.getenv("ODG_OPENSEARCH_URL", "")

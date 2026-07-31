@@ -35,6 +35,26 @@ AUTHORIZATION_EVALUATION = Histogram(
     "odg_runtime_authorization_evaluation_seconds",
     "Runtime authorization policy evaluation time",
 )
+ENFORCEMENT_EVENTS = Counter(
+    "odg_runtime_enforcement_events_total",
+    "Runtime policy enforcement outcomes",
+    ["outcome"],
+)
+POLICY_ROLLOUT_EVENTS = Counter(
+    "odg_policy_rollout_events_total",
+    "Policy rollout lifecycle events",
+    ["event", "stage"],
+)
+GENAI_TELEMETRY = Counter(
+    "odg_genai_telemetry_spans_total",
+    "GenAI telemetry span ingestion results",
+    ["result"],
+)
+OUTBOX_DISPATCH = Counter(
+    "odg_governance_outbox_events_total",
+    "Governance outbox dispatch outcomes",
+    ["outcome"],
+)
 
 
 class JsonFormatter(logging.Formatter):

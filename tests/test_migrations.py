@@ -5,7 +5,7 @@ from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, 
 from app.config import settings
 
 
-def test_initial_migration_creates_v18_schema(tmp_path, monkeypatch):
+def test_initial_migration_creates_v19_schema(tmp_path, monkeypatch):
     database = tmp_path / "migration.db"
     database_url = f"sqlite:///{database}"
     monkeypatch.setattr(settings, "database_url", database_url)
@@ -34,6 +34,11 @@ def test_initial_migration_creates_v18_schema(tmp_path, monkeypatch):
         "ai_resources",
         "ai_resource_relationships",
         "ai_lineage_observations",
+        "enforcement_events",
+        "policy_rollouts",
+        "policy_replays",
+        "genai_telemetry_events",
+        "governance_outbox_events",
         "policy_approver_delegations",
         "policy_bundles",
         "provider_rate_limits",
@@ -107,6 +112,7 @@ def test_initial_migration_creates_v18_schema(tmp_path, monkeypatch):
         "ix_runtime_receipts_tenant_signing_created",
         "ix_runtime_receipts_signing_queue",
         "ix_runtime_receipts_retention_queue",
+        "ix_runtime_receipts_tenant_rollout_created",
     } <= {
         index["name"]
         for index in inspector.get_indexes("runtime_decision_receipts")
@@ -114,6 +120,17 @@ def test_initial_migration_creates_v18_schema(tmp_path, monkeypatch):
     assert "ix_runtime_decision_receipts_signing_status" not in {
         index["name"]
         for index in inspector.get_indexes("runtime_decision_receipts")
+    }
+    assert {
+        "replay_context_json",
+        "replayable",
+        "rollout_id",
+        "rollout_stage",
+        "baseline_policy_decision",
+        "candidate_policy_decision",
+    } <= {
+        column["name"]
+        for column in inspector.get_columns("runtime_decision_receipts")
     }
 
 

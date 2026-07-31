@@ -24,6 +24,7 @@ from app.services.evidence_signing import (
     verify_manifest_signature,
 )
 from app.services.policy import effective_policy_matches, evaluate as evaluate_asset_policy
+from app.services.policy_engine import evaluate_policy_definitions
 
 
 AI_RESOURCE_TYPES = {"model", "prompt", "vector-index", "tool", "endpoint", "ai-system"}
@@ -63,7 +64,13 @@ def evaluate_access(
         raise ValueError("ODG_RUNTIME_AUTHORIZATION_MODE must be observe, warn, or enforce")
 
     started = time.perf_counter()
-    result = _evaluate_policy(db, tenant_id, request, lookup_cache)
+    result = _evaluate_policy_with_rollout(
+        db,
+        tenant_id,
+        request,
+        request_digest,
+        lookup_cache,
+    )
     AUTHORIZATION_EVALUATION.observe(time.perf_counter() - started)
     policy_decision = result["decision"]
     permitted = policy_decision != "deny" if mode == "enforce" else True
@@ -84,9 +91,11 @@ def evaluate_access(
     if signing_profile:
         validate_signing_profile(signing_profile)
     signing_status = "pending" if signing_profile else "unsigned"
+    replay_context, replayable = _replay_context(request)
+    rollout = result.get("rollout")
     manifest = {
         "format": "opendatagraph-runtime-decision-receipt",
-        "version": 1,
+        "version": 2,
         "receipt_id": receipt_id,
         "request_id": request_id,
         "tenant_id": tenant_id,
@@ -97,6 +106,9 @@ def evaluate_access(
             canonical_json(payload.get("context", {}))
         ).hexdigest(),
         "request_sha256": request_digest,
+        "replay_context_sha256": hashlib.sha256(
+            canonical_json(replay_context)
+        ).hexdigest(),
         "authorization": {
             "decision": permitted,
             "policy_decision": policy_decision,
@@ -106,6 +118,7 @@ def evaluate_access(
             "matched_policies": result["matched_policies"],
             "reasons": result["reasons"],
             "obligations": obligations,
+            "rollout": rollout,
         },
         "issued_at": now,
         "retention_until": retention_until,
@@ -130,6 +143,16 @@ def evaluate_access(
         matched_policies_json=json.dumps(result["matched_policies"]),
         reasons_json=json.dumps(result["reasons"]),
         obligations_json=json.dumps(obligations),
+        replay_context_json=json.dumps(replay_context, sort_keys=True),
+        replayable=replayable,
+        rollout_id=rollout["rollout_id"] if rollout else None,
+        rollout_stage=rollout["stage"] if rollout else None,
+        baseline_policy_decision=(
+            rollout["baseline_policy_decision"] if rollout else None
+        ),
+        candidate_policy_decision=(
+            rollout["candidate_policy_decision"] if rollout else None
+        ),
         manifest_json=canonical_json(manifest).decode(),
         manifest_sha256=manifest_digest,
         signing_status=signing_status,
@@ -148,6 +171,32 @@ def evaluate_access(
         created_at=now,
     )
     db.add(receipt)
+    from app.services.outbox import queue_outbox_event
+
+    queue_outbox_event(
+        db,
+        tenant_id,
+        "runtime-receipt",
+        receipt_id,
+        "runtime.authorization",
+        {
+            "receipt_id": receipt_id,
+            "request_id": request_id,
+            "subject_type": request.subject.type,
+            "subject_id": request.subject.id,
+            "resource_type": request.resource.type,
+            "resource_id": request.resource.id,
+            "action": request.action.name,
+            "decision": permitted,
+            "policy_decision": policy_decision,
+            "policy_version": result["policy_version"],
+            "risk_score": result["risk_score"],
+            "rollout_id": rollout["rollout_id"] if rollout else None,
+            "rollout_stage": rollout["stage"] if rollout else None,
+            "created_at": now.isoformat(),
+        },
+        idempotency_key=f"runtime-authorization:{receipt_id}",
+    )
     AUTHORIZATION_DECISIONS.labels(
         mode,
         policy_decision,
@@ -169,6 +218,7 @@ def decision_response(receipt: RuntimeDecisionReceipt) -> dict:
             "matched_policies": json.loads(receipt.matched_policies_json or "[]"),
             "reasons": reasons,
             "obligations": json.loads(receipt.obligations_json or "[]"),
+            "rollout": _receipt_rollout(receipt),
             "receipt": {
                 "id": receipt.receipt_id,
                 "sha256": receipt.manifest_sha256,
@@ -199,6 +249,8 @@ def receipt_response(
         "matched_policies": json.loads(receipt.matched_policies_json or "[]"),
         "reasons": json.loads(receipt.reasons_json or "[]"),
         "obligations": json.loads(receipt.obligations_json or "[]"),
+        "replayable": receipt.replayable,
+        "rollout": _receipt_rollout(receipt),
         "manifest_sha256": receipt.manifest_sha256,
         "signing_status": receipt.signing_status,
         "signing_profile": receipt.signing_profile,
@@ -349,11 +401,49 @@ def purge_expired_receipts(db: Session, limit: int = 10_000) -> int:
     return deleted.rowcount
 
 
-def _evaluate_policy(
+def _evaluate_policy_with_rollout(
     db: Session,
     tenant_id: str,
     request: AuthZENEvaluationRequest,
+    selector: str,
     lookup_cache: dict | None,
+) -> dict:
+    baseline = evaluate_policy_only(db, tenant_id, request, lookup_cache)
+    from app.services.policy_rollouts import runtime_rollout
+
+    rollout = runtime_rollout(db, tenant_id, selector)
+    if not rollout:
+        return baseline
+    candidate = evaluate_policy_only(
+        db,
+        tenant_id,
+        request,
+        lookup_cache,
+        rollout["definitions"],
+        rollout["policy_version"],
+    )
+    result = candidate if rollout["selected"] else baseline
+    result = dict(result)
+    result["rollout"] = {
+        "rollout_id": rollout["rollout_id"],
+        "stage": rollout["stage"],
+        "traffic_percentage": rollout["traffic_percentage"],
+        "bucket": rollout["bucket"],
+        "selected": rollout["selected"],
+        "baseline_policy_decision": baseline["decision"],
+        "candidate_policy_decision": candidate["decision"],
+        "changed": baseline["decision"] != candidate["decision"],
+    }
+    return result
+
+
+def evaluate_policy_only(
+    db: Session,
+    tenant_id: str,
+    request: AuthZENEvaluationRequest,
+    lookup_cache: dict | None = None,
+    policy_definitions: list[dict] | None = None,
+    policy_version_override: str | None = None,
 ) -> dict:
     agent = _agent(
         db,
@@ -384,10 +474,16 @@ def _evaluate_policy(
             purpose,
             db,
             tenant_id,
+            policy_definitions,
+            policy_version_override,
         )
 
     context = _policy_context(request, agent, asset)
-    matches, policy_version = effective_policy_matches(context, db, tenant_id)
+    if policy_definitions is None:
+        matches, policy_version = effective_policy_matches(context, db, tenant_id)
+    else:
+        matches = evaluate_policy_definitions(context, policy_definitions)
+        policy_version = policy_version_override or "candidate"
     reasons = [match.reason for match in matches]
     controls = ["audit-log", "identity-context", "tenant-context"]
     for match in matches:
@@ -556,6 +652,42 @@ def _entity_claim(entity: dict) -> dict:
     return identity
 
 
+def _replay_context(request: AuthZENEvaluationRequest) -> tuple[dict, bool]:
+    allowed = {
+        "destination",
+        "purpose",
+        "destination_type",
+        "environment",
+        "region",
+        "model",
+        "tool",
+    }
+    context = {}
+    for key in sorted(allowed):
+        value = request.context.get(key)
+        if isinstance(value, (str, int, float, bool)) and len(str(value)) <= 320:
+            context[key] = value
+    replayable = request.subject.type in {"agent", "ai_agent"} and (
+        request.resource.type in {"asset", "data_asset"}
+        or request.resource.type in AI_RESOURCE_TYPES
+    )
+    return context, replayable
+
+
+def _receipt_rollout(receipt: RuntimeDecisionReceipt) -> dict | None:
+    if not receipt.rollout_id:
+        return None
+    return {
+        "rollout_id": receipt.rollout_id,
+        "stage": receipt.rollout_stage,
+        "baseline_policy_decision": receipt.baseline_policy_decision,
+        "candidate_policy_decision": receipt.candidate_policy_decision,
+        "changed": (
+            receipt.baseline_policy_decision != receipt.candidate_policy_decision
+        ),
+    }
+
+
 def _denial(reason: str, risk_score: int) -> dict:
     return {
         "decision": "deny",
@@ -563,7 +695,7 @@ def _denial(reason: str, risk_score: int) -> dict:
         "reasons": [reason],
         "controls": ["audit-log", "deny-by-default", "tenant-context"],
         "confidence": 1.0,
-        "policy_version": "1.8.0",
+        "policy_version": "1.9.0",
         "expires_in_seconds": 60,
         "matched_policies": [],
     }

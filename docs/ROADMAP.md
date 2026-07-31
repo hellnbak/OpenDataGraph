@@ -82,3 +82,16 @@ Delivered in v1.7.0 with Ed25519, AWS KMS, and Sigstore evidence assurance; conn
 - Policy caching, PostgreSQL pool controls, tenant-leading indexes, authorization benchmarks, and query plans
 
 Delivered in v1.8.0 with runtime authorization and assurance, governed AI resource lineage, and a measured qualification path rather than universal capacity claims.
+
+## v1.9 — Production enforcement and fleet governance
+
+- AuthZEN subject, resource, and action search with opaque pagination
+- Python and TypeScript fail-closed policy-enforcement-point SDKs
+- Receipt-linked enforcement evidence
+- Replay, shadow, deterministic canary, pause, and promotion for approved policy bundles
+- Metadata-only OpenTelemetry GenAI ingestion, model discovery, and lineage
+- Transactional governance outbox and Kafka REST CloudEvents delivery
+- OIDC-protected stateless remote MCP preview
+- NIST AI RMF evidence coverage and gap reporting
+
+Delivered in v1.9.0 with explicit preview boundaries and no universal scale, MCP conformance, or compliance claim.

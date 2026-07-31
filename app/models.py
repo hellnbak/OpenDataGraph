@@ -852,6 +852,12 @@ class RuntimeDecisionReceipt(TenantMixin, Base):
             "retention_until",
             "signing_status",
         ),
+        Index(
+            "ix_runtime_receipts_tenant_rollout_created",
+            "tenant_id",
+            "rollout_id",
+            "created_at",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -872,6 +878,18 @@ class RuntimeDecisionReceipt(TenantMixin, Base):
     matched_policies_json: Mapped[str] = mapped_column(Text, default="[]")
     reasons_json: Mapped[str] = mapped_column(Text, default="[]")
     obligations_json: Mapped[str] = mapped_column(Text, default="[]")
+    replay_context_json: Mapped[str] = mapped_column(Text, default="{}")
+    replayable: Mapped[bool] = mapped_column(Boolean, default=False)
+    rollout_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    rollout_stage: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    baseline_policy_decision: Mapped[str | None] = mapped_column(
+        String(40),
+        nullable=True,
+    )
+    candidate_policy_decision: Mapped[str | None] = mapped_column(
+        String(40),
+        nullable=True,
+    )
     manifest_json: Mapped[str] = mapped_column(Text)
     manifest_sha256: Mapped[str] = mapped_column(String(64))
     signing_status: Mapped[str] = mapped_column(String(40), default="unsigned")
@@ -1016,3 +1034,196 @@ class AILineageObservation(TenantMixin, Base):
     metadata_json: Mapped[str] = mapped_column(Text, default="{}")
     observed_at: Mapped[datetime] = mapped_column(DateTime)
     recorded_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class EnforcementEvent(TenantMixin, Base):
+    __tablename__ = "enforcement_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "event_id",
+            name="uq_enforcement_event_tenant_id",
+        ),
+        Index(
+            "ix_enforcement_events_tenant_receipt_time",
+            "tenant_id",
+            "receipt_id",
+            "occurred_at",
+        ),
+        Index(
+            "ix_enforcement_events_tenant_outcome_time",
+            "tenant_id",
+            "outcome",
+            "occurred_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[str] = mapped_column(String(36))
+    receipt_id: Mapped[str] = mapped_column(String(36))
+    pep_id: Mapped[str] = mapped_column(String(320))
+    outcome: Mapped[str] = mapped_column(String(40))
+    required_obligations_json: Mapped[str] = mapped_column(Text, default="[]")
+    satisfied_obligations_json: Mapped[str] = mapped_column(Text, default="[]")
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_sha256: Mapped[str] = mapped_column(String(64))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime)
+    recorded_by: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class PolicyRollout(TenantMixin, Base):
+    __tablename__ = "policy_rollouts"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "rollout_id",
+            name="uq_policy_rollout_tenant_id",
+        ),
+        Index(
+            "ix_policy_rollouts_tenant_status_stage",
+            "tenant_id",
+            "status",
+            "stage",
+            "updated_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    rollout_id: Mapped[str] = mapped_column(String(36))
+    bundle_id: Mapped[str] = mapped_column(String(36))
+    baseline_bundle_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    stage: Mapped[str] = mapped_column(String(40), default="shadow")
+    status: Mapped[str] = mapped_column(String(40), default="active")
+    traffic_percentage: Mapped[int] = mapped_column(Integer, default=0)
+    replay_limit: Mapped[int] = mapped_column(Integer, default=500)
+    replay_evaluated: Mapped[int] = mapped_column(Integer, default=0)
+    replay_changed: Mapped[int] = mapped_column(Integer, default=0)
+    replay_newly_denied: Mapped[int] = mapped_column(Integer, default=0)
+    replay_newly_permitted: Mapped[int] = mapped_column(Integer, default=0)
+    replay_incomplete: Mapped[int] = mapped_column(Integer, default=0)
+    last_replay_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(320))
+    promoted_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class PolicyReplay(TenantMixin, Base):
+    __tablename__ = "policy_replays"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "replay_id",
+            name="uq_policy_replay_tenant_id",
+        ),
+        Index(
+            "ix_policy_replays_tenant_rollout_time",
+            "tenant_id",
+            "rollout_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    replay_id: Mapped[str] = mapped_column(String(36))
+    rollout_id: Mapped[str] = mapped_column(String(36))
+    bundle_id: Mapped[str] = mapped_column(String(36))
+    baseline_policy_version: Mapped[str] = mapped_column(String(160))
+    evaluated: Mapped[int] = mapped_column(Integer, default=0)
+    changed: Mapped[int] = mapped_column(Integer, default=0)
+    newly_denied: Mapped[int] = mapped_column(Integer, default=0)
+    newly_permitted: Mapped[int] = mapped_column(Integer, default=0)
+    incomplete: Mapped[int] = mapped_column(Integer, default=0)
+    examples_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_by: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class GenAITelemetryEvent(TenantMixin, Base):
+    __tablename__ = "genai_telemetry_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "event_id",
+            name="uq_genai_telemetry_tenant_event",
+        ),
+        Index(
+            "ix_genai_telemetry_tenant_occurred",
+            "tenant_id",
+            "occurred_at",
+        ),
+        Index(
+            "ix_genai_telemetry_tenant_agent_occurred",
+            "tenant_id",
+            "agent_key",
+            "occurred_at",
+        ),
+        Index(
+            "ix_genai_telemetry_tenant_model_occurred",
+            "tenant_id",
+            "model",
+            "occurred_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[str] = mapped_column(String(240))
+    trace_id: Mapped[str] = mapped_column(String(64))
+    span_id: Mapped[str] = mapped_column(String(64))
+    operation: Mapped[str] = mapped_column(String(160))
+    provider: Mapped[str] = mapped_column(String(160), default="")
+    model: Mapped[str] = mapped_column(String(320), default="")
+    agent_key: Mapped[str] = mapped_column(String(320), default="")
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    duration_ms: Mapped[float] = mapped_column(Float, default=0.0)
+    finish_reasons_json: Mapped[str] = mapped_column(Text, default="[]")
+    attributes_sha256: Mapped[str] = mapped_column(String(64))
+    content_discarded: Mapped[bool] = mapped_column(Boolean, default=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class GovernanceOutboxEvent(TenantMixin, Base):
+    __tablename__ = "governance_outbox_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "event_id",
+            name="uq_governance_outbox_tenant_event",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "idempotency_key",
+            name="uq_governance_outbox_tenant_idempotency",
+        ),
+        Index(
+            "ix_governance_outbox_dispatch_queue",
+            "status",
+            "available_at",
+            "created_at",
+        ),
+        Index(
+            "ix_governance_outbox_tenant_type_created",
+            "tenant_id",
+            "event_type",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[str] = mapped_column(String(36))
+    idempotency_key: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    aggregate_type: Mapped[str] = mapped_column(String(80))
+    aggregate_id: Mapped[str] = mapped_column(String(320))
+    event_type: Mapped[str] = mapped_column(String(160))
+    payload_json: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(40), default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    available_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

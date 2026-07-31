@@ -1,6 +1,6 @@
 # Background Jobs
 
-OpenDataGraph v1.8 stores durable jobs in the primary database and executes them with `python -m app.worker`.
+OpenDataGraph v1.9 stores durable jobs and governance outbox state in the primary database and executes them with `python -m app.worker`.
 
 ## Supported jobs
 

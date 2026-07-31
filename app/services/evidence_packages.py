@@ -12,14 +12,18 @@ from app.config import settings
 from app.models import (
     AILineageObservation,
     DecisionAudit,
+    EnforcementEvent,
     EvidenceDisposition,
     EvidenceRecord,
     GovernanceEvidencePackage,
+    GovernanceOutboxEvent,
     GovernanceReviewTask,
     GraphExport,
+    GenAITelemetryEvent,
     OwnershipAssignment,
     OwnershipCampaign,
     PolicyBundle,
+    PolicyRollout,
     RuntimeDecisionReceipt,
     ServiceAccount,
     ServiceAccountCredential,
@@ -44,6 +48,10 @@ PACKAGE_CATEGORIES = {
     "service-accounts",
     "graph-exports",
     "runtime-decisions",
+    "runtime-enforcement",
+    "policy-rollouts",
+    "genai-telemetry",
+    "governance-outbox",
     "ai-lineage",
 }
 
@@ -118,6 +126,28 @@ def governance_analytics(db: Session, tenant_id: str, days: int = 30) -> dict:
                 RuntimeDecisionReceipt.created_at >= window_start,
             )
             .group_by(RuntimeDecisionReceipt.signing_status)
+        ).all()
+    }
+    enforcement_counts = {
+        outcome: count
+        for outcome, count in db.execute(
+            select(EnforcementEvent.outcome, func.count(EnforcementEvent.id))
+            .where(
+                EnforcementEvent.tenant_id == tenant_id,
+                EnforcementEvent.occurred_at >= window_start,
+            )
+            .group_by(EnforcementEvent.outcome)
+        ).all()
+    }
+    outbox_counts = {
+        status: count
+        for status, count in db.execute(
+            select(GovernanceOutboxEvent.status, func.count(GovernanceOutboxEvent.id))
+            .where(
+                GovernanceOutboxEvent.tenant_id == tenant_id,
+                GovernanceOutboxEvent.created_at >= window_start,
+            )
+            .group_by(GovernanceOutboxEvent.status)
         ).all()
     }
     return {
@@ -253,6 +283,22 @@ def governance_analytics(db: Session, tenant_id: str, days: int = 30) -> dict:
         "runtime_authorization": {
             "decisions": runtime_decision_counts,
             "receipt_signing": receipt_signing_counts,
+            "enforcement": enforcement_counts,
+            "active_rollouts": _count(
+                db,
+                PolicyRollout,
+                PolicyRollout.tenant_id == tenant_id,
+                PolicyRollout.status == "active",
+            ),
+            "rollout_changed_receipts": _count(
+                db,
+                RuntimeDecisionReceipt,
+                RuntimeDecisionReceipt.tenant_id == tenant_id,
+                RuntimeDecisionReceipt.created_at >= window_start,
+                RuntimeDecisionReceipt.rollout_id.is_not(None),
+                RuntimeDecisionReceipt.baseline_policy_decision
+                != RuntimeDecisionReceipt.candidate_policy_decision,
+            ),
             "lineage_drift_events": _count(
                 db,
                 AILineageObservation,
@@ -260,6 +306,20 @@ def governance_analytics(db: Session, tenant_id: str, days: int = 30) -> dict:
                 AILineageObservation.drift_detected.is_(True),
                 AILineageObservation.observed_at >= window_start,
             ),
+            "genai_telemetry_events": _count(
+                db,
+                GenAITelemetryEvent,
+                GenAITelemetryEvent.tenant_id == tenant_id,
+                GenAITelemetryEvent.occurred_at >= window_start,
+            ),
+            "telemetry_content_discarded": _count(
+                db,
+                GenAITelemetryEvent,
+                GenAITelemetryEvent.tenant_id == tenant_id,
+                GenAITelemetryEvent.occurred_at >= window_start,
+                GenAITelemetryEvent.content_discarded.is_(True),
+            ),
+            "governance_outbox": outbox_counts,
         },
     }
 
@@ -493,6 +553,26 @@ def _package_sections(
             RuntimeDecisionReceipt.created_at,
             _runtime_receipt_record,
         ),
+        "runtime-enforcement": (
+            EnforcementEvent,
+            EnforcementEvent.occurred_at,
+            _enforcement_record,
+        ),
+        "policy-rollouts": (
+            PolicyRollout,
+            PolicyRollout.created_at,
+            _policy_rollout_record,
+        ),
+        "genai-telemetry": (
+            GenAITelemetryEvent,
+            GenAITelemetryEvent.occurred_at,
+            _genai_telemetry_record,
+        ),
+        "governance-outbox": (
+            GovernanceOutboxEvent,
+            GovernanceOutboxEvent.created_at,
+            _outbox_record,
+        ),
         "ai-lineage": (
             AILineageObservation,
             AILineageObservation.recorded_at,
@@ -620,11 +700,82 @@ def _runtime_receipt_record(record: RuntimeDecisionReceipt) -> dict:
         "enforcement_mode": record.enforcement_mode,
         "risk_score": record.risk_score,
         "policy_version": record.policy_version,
+        "replayable": record.replayable,
+        "rollout_id": record.rollout_id,
+        "rollout_stage": record.rollout_stage,
+        "baseline_policy_decision": record.baseline_policy_decision,
+        "candidate_policy_decision": record.candidate_policy_decision,
         "manifest_sha256": record.manifest_sha256,
         "signing_status": record.signing_status,
         "signing_profile": record.signing_profile,
         "retention_until": record.retention_until,
         "created_at": record.created_at,
+    }
+
+
+def _enforcement_record(record: EnforcementEvent) -> dict:
+    return {
+        "event_id": record.event_id,
+        "receipt_id": record.receipt_id,
+        "pep_id": record.pep_id,
+        "outcome": record.outcome,
+        "required_obligations": json.loads(record.required_obligations_json or "[]"),
+        "satisfied_obligations": json.loads(record.satisfied_obligations_json or "[]"),
+        "failure_reason": record.failure_reason,
+        "metadata_sha256": record.metadata_sha256,
+        "occurred_at": record.occurred_at,
+        "created_at": record.created_at,
+    }
+
+
+def _policy_rollout_record(record: PolicyRollout) -> dict:
+    return {
+        "rollout_id": record.rollout_id,
+        "bundle_id": record.bundle_id,
+        "baseline_bundle_id": record.baseline_bundle_id,
+        "stage": record.stage,
+        "status": record.status,
+        "traffic_percentage": record.traffic_percentage,
+        "replay_evaluated": record.replay_evaluated,
+        "replay_changed": record.replay_changed,
+        "replay_newly_denied": record.replay_newly_denied,
+        "replay_newly_permitted": record.replay_newly_permitted,
+        "replay_incomplete": record.replay_incomplete,
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
+        "completed_at": record.completed_at,
+    }
+
+
+def _genai_telemetry_record(record: GenAITelemetryEvent) -> dict:
+    return {
+        "event_id": record.event_id,
+        "trace_id": record.trace_id,
+        "span_id": record.span_id,
+        "operation": record.operation,
+        "provider": record.provider,
+        "model": record.model,
+        "agent_key": record.agent_key,
+        "input_tokens": record.input_tokens,
+        "output_tokens": record.output_tokens,
+        "duration_ms": record.duration_ms,
+        "finish_reasons": json.loads(record.finish_reasons_json or "[]"),
+        "attributes_sha256": record.attributes_sha256,
+        "content_discarded": record.content_discarded,
+        "occurred_at": record.occurred_at,
+    }
+
+
+def _outbox_record(record: GovernanceOutboxEvent) -> dict:
+    return {
+        "event_id": record.event_id,
+        "aggregate_type": record.aggregate_type,
+        "aggregate_id": record.aggregate_id,
+        "event_type": record.event_type,
+        "status": record.status,
+        "attempts": record.attempts,
+        "created_at": record.created_at,
+        "dispatched_at": record.dispatched_at,
     }
 
 

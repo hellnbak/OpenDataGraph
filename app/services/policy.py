@@ -17,7 +17,7 @@ from app.services.policy_engine import (
 
 
 SENSITIVITY = {"Public": 0, "Internal": 1, "Confidential": 2, "Restricted": 3, "Unclassified": 2}
-POLICY_VERSION = "1.8.0"
+POLICY_VERSION = "1.9.0"
 _POLICY_CACHE: dict[tuple[int, str], tuple[float, str, list[dict]]] = {}
 _POLICY_CACHE_LOCK = RLock()
 
@@ -30,6 +30,8 @@ def evaluate(
     purpose: str,
     db: Session | None = None,
     tenant_id: str = "default",
+    policy_definitions: list[dict] | None = None,
+    policy_version_override: str | None = None,
 ) -> dict:
     reasons = []
     controls = ["audit-log", "identity-context", "tenant-context"]
@@ -43,11 +45,15 @@ def evaluate(
         "action": action,
         "purpose": purpose,
     }
-    policy_matches, policy_version = effective_policy_matches(
-        context,
-        db,
-        tenant_id,
-    )
+    if policy_definitions is None:
+        policy_matches, policy_version = effective_policy_matches(
+            context,
+            db,
+            tenant_id,
+        )
+    else:
+        policy_matches = evaluate_policy_definitions(context, policy_definitions)
+        policy_version = policy_version_override or "candidate"
     for match in policy_matches:
         reasons.append(match.reason)
         controls.extend(match.controls)

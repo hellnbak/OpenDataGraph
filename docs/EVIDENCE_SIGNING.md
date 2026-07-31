@@ -1,6 +1,6 @@
 # Governance Evidence Signing
 
-OpenDataGraph v1.8 can sign the canonical manifest of every governance evidence package and verify the package independently of its storage location. Signing covers the payload digest, each section digest, package identity, tenant, window, categories, record count, truncation state, and generator version. Runtime decision receipts reuse the same signing and verification profiles for their own canonical manifests.
+OpenDataGraph v1.9 can sign the canonical manifest of every governance evidence package and verify the package independently of its storage location. Signing covers the payload digest, each section digest, package identity, tenant, window, categories, record count, truncation state, and generator version. Runtime decision receipts reuse the same signing and verification profiles for their own canonical manifests.
 
 ## Package assurance model
 

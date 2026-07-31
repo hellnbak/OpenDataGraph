@@ -1,6 +1,6 @@
 # Search
 
-OpenDataGraph v1.8 supports database search and optional OpenSearch metadata indexing.
+OpenDataGraph v1.9 supports database search, optional OpenSearch metadata indexing, and separate receipt-free AuthZEN authorization search.
 
 ## Configuration
 

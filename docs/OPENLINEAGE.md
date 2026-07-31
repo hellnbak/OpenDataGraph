@@ -1,6 +1,6 @@
 # OpenLineage
 
-OpenDataGraph v1.8 accepts bounded OpenLineage run events through:
+OpenDataGraph v1.9 accepts bounded OpenLineage run events through:
 
 ```text
 POST /api/v1/lineage/events

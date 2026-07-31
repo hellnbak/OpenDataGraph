@@ -1,0 +1,16 @@
+{
+  "name": "@opendatagraph/enforcement",
+  "version": "1.9.0",
+  "description": "Policy enforcement point SDK for OpenDataGraph runtime authorization",
+  "license": "FSL-1.1-ALv2",
+  "type": "module",
+  "exports": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "engines": {"node": ">=20"},
+  "devDependencies": {"typescript": "^5.9.0"}
+}

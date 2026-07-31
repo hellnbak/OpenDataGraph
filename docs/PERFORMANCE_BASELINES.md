@@ -1,6 +1,6 @@
 # Performance Baselines
 
-OpenDataGraph v1.8 turns benchmark reports and optional read-only PostgreSQL plans into portable comparative baselines. Baselines detect regressions; they are not certified capacity claims. Runtime authorization operations include durable receipt writes and should be compared only when database durability and policy inputs are equivalent.
+OpenDataGraph v1.9 turns benchmark reports and optional read-only PostgreSQL plans into portable comparative baselines. Baselines detect regressions; they are not certified capacity claims. Runtime authorization operations include durable receipt and outbox writes and should be compared only when database durability, rollout stage, and policy inputs are equivalent.
 
 ## Reference topologies
 

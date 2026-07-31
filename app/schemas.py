@@ -306,7 +306,7 @@ class IntegrationEndpointCreate(BaseModel):
     mode: str = Field(default="observe", pattern="^(observe|enforce)$")
     event_format: str = Field(
         default="native",
-        pattern="^(native|cloudevents|cef|splunk-hec)$",
+        pattern="^(native|cloudevents|cef|splunk-hec|kafka-rest)$",
     )
     url: str = Field(min_length=8, max_length=2048)
     secret_ref: str | None = Field(default=None, pattern=r"^(env|file):.+$")
@@ -567,3 +567,73 @@ class AILineageObservationCreate(BaseModel):
     target: AIResourceReference
     observed_at: datetime
     metadata: dict = Field(default_factory=dict)
+
+
+class AuthZENSearchEntity(BaseModel):
+    type: str = Field(min_length=1, max_length=80)
+    id: str | None = Field(default=None, min_length=1, max_length=1024)
+    properties: dict = Field(default_factory=dict)
+
+
+class AuthZENSearchPage(BaseModel):
+    token: str | None = Field(default=None, min_length=1, max_length=4096)
+    limit: int = Field(default=100, ge=1, le=500)
+
+
+class AuthZENSubjectSearchRequest(BaseModel):
+    subject: AuthZENSearchEntity
+    action: AuthZENAction
+    resource: AuthZENResource
+    context: dict = Field(default_factory=dict)
+    page: AuthZENSearchPage = Field(default_factory=AuthZENSearchPage)
+
+
+class AuthZENResourceSearchRequest(BaseModel):
+    subject: AuthZENSubject
+    action: AuthZENAction
+    resource: AuthZENSearchEntity
+    context: dict = Field(default_factory=dict)
+    page: AuthZENSearchPage = Field(default_factory=AuthZENSearchPage)
+
+
+class AuthZENActionSearchRequest(BaseModel):
+    subject: AuthZENSubject
+    resource: AuthZENResource
+    context: dict = Field(default_factory=dict)
+    page: AuthZENSearchPage = Field(default_factory=AuthZENSearchPage)
+
+
+class EnforcementEventCreate(BaseModel):
+    event_id: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=36,
+        pattern=r"^[A-Za-z0-9_.-]+$",
+    )
+    receipt_id: str = Field(min_length=1, max_length=36)
+    pep_id: str = Field(min_length=1, max_length=320)
+    outcome: str = Field(pattern="^(applied|rejected|failed)$")
+    satisfied_obligations: list[str] = Field(default_factory=list, max_length=100)
+    failure_reason: str | None = Field(default=None, max_length=2000)
+    metadata: dict = Field(default_factory=dict)
+    occurred_at: datetime
+
+
+class PolicyRolloutCreate(BaseModel):
+    bundle_id: str = Field(min_length=1, max_length=36)
+    stage: str = Field(default="shadow", pattern="^(shadow|canary)$")
+    traffic_percentage: int = Field(default=0, ge=0, le=99)
+    replay_limit: int = Field(default=500, ge=1, le=5000)
+
+
+class PolicyRolloutAdvance(BaseModel):
+    stage: str = Field(pattern="^(shadow|canary|enforce|paused|completed)$")
+    traffic_percentage: int | None = Field(default=None, ge=1, le=99)
+
+
+class PolicyReplayCreate(BaseModel):
+    limit: int | None = Field(default=None, ge=1, le=5000)
+
+
+class GovernanceFrameworkCoverageRequest(BaseModel):
+    days: int = Field(default=30, ge=1, le=366)

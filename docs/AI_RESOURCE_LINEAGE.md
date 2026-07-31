@@ -1,6 +1,6 @@
 # AI Resource Lineage
 
-OpenDataGraph v1.8 treats runtime AI components as governed resources and distinguishes declared relationships from observed behavior.
+OpenDataGraph v1.9 treats runtime AI components as governed resources, discovers review-state models from metadata-only telemetry, and distinguishes declared relationships from observed behavior.
 
 ## Resource registry
 

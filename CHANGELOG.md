@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.9.0 - 2026-07-31
+
+### Added
+
+- Receipt-linked policy-enforcement evidence and fail-closed Python and TypeScript PEP SDKs with explicit required-obligation handlers
+- Policy replay, shadow comparison, deterministic canary routing, pause, promotion, and baseline-versus-candidate receipt evidence
+- AuthZEN subject, resource, and action search with bounded results and opaque request- and tenant-bound HMAC pagination
+- Metadata-only OTLP/HTTP JSON GenAI span ingestion, content discard, idempotent model discovery, and agent-to-model lineage observation
+- Transactional governance outbox with atomic claims, stale recovery, bounded retry, integration idempotency, and operator inspection
+- Kafka REST Proxy-compatible CloudEvents delivery format
+- Opt-in OIDC-protected stateless remote MCP preview with server discovery and a bounded tool catalog
+- NIST AI RMF evidence coverage and gap reporting without a compliance claim
+- Alembic upgrade `20260731_0008` and deterministic v1.9 enforcement, rollout, search, telemetry, MCP, framework, outbox, migration, and SDK tests
+
+### Changed
+
+- Updated application, console, chart, SDK package, documentation, deployment defaults, and release packaging versions to `1.9.0`
+- Expanded runtime receipts with allowlisted replay context and rollout comparison while preserving prior APIs and cumulative README capabilities
+- Added runtime authorization outbox writes, rollout cache controls, telemetry and outbox batch limits, and remote MCP deployment controls
+
 ## 1.8.0 - 2026-07-31
 
 ### Added

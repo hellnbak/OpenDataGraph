@@ -390,7 +390,7 @@ def _manifest(
     return ConnectorManifest(
         connector_type=connector_type,
         display_name=display_name,
-        version="1.8.0",
+        version="1.9.0",
         permissions=permissions,
         egress_hosts=egress_hosts,
         capabilities=ConnectorCapabilities(
