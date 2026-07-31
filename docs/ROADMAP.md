@@ -28,3 +28,12 @@
 - Policy lifecycle, approvals, exceptions, and rollback
 - Alert destinations and enforcement integrations
 - OpenLineage ingestion and advanced graph queries
+
+## v1.4 — Product hardening
+
+- Cron and time-zone schedule calendars with maintenance windows
+- OIDC discovery caching, SCIM bulk operations, and identity deprovisioning workflows
+- Integration dead-letter handling, replay controls, and delivery dashboards
+- Policy change diffs, delegated approvers, and exception renewal workflows
+- Evidence object-lock verification and disposition approvals
+- Larger-estate graph indexing, path explanations, and export

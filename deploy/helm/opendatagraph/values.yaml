@@ -2,7 +2,7 @@ replicaCount: 2
 
 image:
   repository: opendatagraph
-  tag: "1.2.0"
+  tag: "1.3.0"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -56,6 +56,11 @@ config:
   githubAllowedHosts: api.github.com
   gitlabAllowedHosts: gitlab.com
   sharepointAllowedHosts: graph.microsoft.com
+  integrationAllowedHosts: ""
+  integrationTimeoutSeconds: "10"
+  evidenceDefaultRetentionDays: "365"
+  workerScheduleBatchSize: "50"
+  graphMaxDepth: "5"
   logFormat: json
   metricsEnabled: "true"
   workerPollSeconds: "2"

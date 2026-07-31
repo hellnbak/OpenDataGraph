@@ -187,5 +187,158 @@ class EvidenceRecord(TenantMixin, Base):
     sha256: Mapped[str] = mapped_column(String(64))
     size_bytes: Mapped[int] = mapped_column(Integer)
     metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    retention_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    legal_hold: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    deleted_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    deletion_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[str] = mapped_column(String(320))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+
+
+class ConnectorSchedule(TenantMixin, Base):
+    __tablename__ = "connector_schedules"
+    __table_args__ = (UniqueConstraint("tenant_id", "schedule_id", name="uq_schedule_tenant_schedule_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    schedule_id: Mapped[str] = mapped_column(String(36), index=True)
+    connector_type: Mapped[str] = mapped_column(String(80), index=True)
+    account: Mapped[str] = mapped_column(String(240))
+    interval_seconds: Mapped[int] = mapped_column(Integer)
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    last_enqueued_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class ProviderRateLimit(TenantMixin, Base):
+    __tablename__ = "provider_rate_limits"
+    __table_args__ = (UniqueConstraint("tenant_id", "provider", name="uq_rate_limit_tenant_provider"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(80), index=True)
+    max_requests: Mapped[int] = mapped_column(Integer)
+    window_seconds: Mapped[int] = mapped_column(Integer)
+    used_requests: Mapped[int] = mapped_column(Integer, default=0)
+    window_started_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class SCIMResource(TenantMixin, Base):
+    __tablename__ = "scim_resources"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "resource_type", "resource_id", name="uq_scim_tenant_type_resource"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    resource_type: Mapped[str] = mapped_column(String(40), index=True)
+    resource_id: Mapped[str] = mapped_column(String(36), index=True)
+    external_id: Mapped[str | None] = mapped_column(String(320), nullable=True, index=True)
+    user_name: Mapped[str | None] = mapped_column(String(320), nullable=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(320))
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    data_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class PolicyBundle(TenantMixin, Base):
+    __tablename__ = "policy_bundles"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "bundle_id", name="uq_policy_bundle_tenant_id"),
+        UniqueConstraint("tenant_id", "name", "version", name="uq_policy_bundle_tenant_name_version"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bundle_id: Mapped[str] = mapped_column(String(36), index=True)
+    name: Mapped[str] = mapped_column(String(160), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
+    definition_json: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(String(320))
+    approved_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class PolicyException(TenantMixin, Base):
+    __tablename__ = "policy_exceptions"
+    __table_args__ = (UniqueConstraint("tenant_id", "exception_id", name="uq_policy_exception_tenant_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    exception_id: Mapped[str] = mapped_column(String(36), index=True)
+    policy_id: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    agent_key: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    asset_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    destination: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    action: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    purpose: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    override_decision: Mapped[str] = mapped_column(String(40))
+    reason: Mapped[str] = mapped_column(Text)
+    controls_json: Mapped[str] = mapped_column(Text, default="[]")
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_by: Mapped[str] = mapped_column(String(320))
+    approved_by: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class IntegrationEndpoint(TenantMixin, Base):
+    __tablename__ = "integration_endpoints"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "endpoint_id", name="uq_integration_endpoint_tenant_id"),
+        UniqueConstraint("tenant_id", "name", name="uq_integration_endpoint_tenant_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    endpoint_id: Mapped[str] = mapped_column(String(36), index=True)
+    name: Mapped[str] = mapped_column(String(160), index=True)
+    endpoint_type: Mapped[str] = mapped_column(String(40), default="webhook")
+    mode: Mapped[str] = mapped_column(String(40), default="observe")
+    url: Mapped[str] = mapped_column(String(2048))
+    secret_ref: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    events_json: Mapped[str] = mapped_column(Text, default="[]")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_by: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class IntegrationDelivery(TenantMixin, Base):
+    __tablename__ = "integration_deliveries"
+    __table_args__ = (UniqueConstraint("tenant_id", "delivery_id", name="uq_integration_delivery_tenant_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    delivery_id: Mapped[str] = mapped_column(String(36), index=True)
+    endpoint_id: Mapped[str] = mapped_column(String(36), index=True)
+    event_type: Mapped[str] = mapped_column(String(120), index=True)
+    payload_json: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    response_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class LineageEvent(TenantMixin, Base):
+    __tablename__ = "lineage_events"
+    __table_args__ = (UniqueConstraint("tenant_id", "event_id", name="uq_lineage_event_tenant_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[str] = mapped_column(String(64), index=True)
+    event_type: Mapped[str] = mapped_column(String(40), index=True)
+    event_time: Mapped[datetime] = mapped_column(DateTime, index=True)
+    run_id: Mapped[str] = mapped_column(String(320), index=True)
+    job_namespace: Mapped[str] = mapped_column(String(320), index=True)
+    job_name: Mapped[str] = mapped_column(String(320), index=True)
+    producer: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    payload_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)

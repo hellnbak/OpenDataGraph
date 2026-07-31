@@ -1,6 +1,6 @@
 # Authentication and Tenancy
 
-OpenDataGraph v1.2 binds each API-key principal to a role and tenant.
+OpenDataGraph v1.3 binds each API-key or validated OIDC principal to a role and tenant.
 
 ## Local mode
 
@@ -31,14 +31,20 @@ Roles, from least to most privileged:
 5. data-owner
 6. administrator
 
-Every key is bound to one tenant. The application does not accept a caller-selected tenant header or tenant request field.
+Every principal is bound to one tenant. Data-bearing APIs do not accept a caller-selected tenant header or tenant request field.
+
+## OIDC validation
+
+`ODG_OIDC_PROVIDERS_JSON` configures one or more providers with exact issuer, audience, HTTPS JWKS URL, accepted asymmetric algorithms, claim paths, and optional role mapping. Bearer tokens are rejected unless signature, issuer, audience, lifetime, subject, tenant, and supported role validation succeeds.
+
+Keep the identity provider, ingress, and application validation aligned. Do not allow unsigned tokens, symmetric algorithms, caller-selected tenants, or unrestricted JWKS locations.
+
+## SCIM
+
+SCIM provisioning uses separate bearer tokens bound to tenants in `ODG_SCIM_TOKENS_JSON`. It never accepts caller-selected tenant context or reuses end-user OIDC tokens or API keys. See [Identity provisioning](IDENTITY_PROVISIONING.md).
 
 ## Isolation behavior
 
-Tenant filters apply to assets, agents, policy audits, connector runs, classification reviews, AI usage events, graph edges, jobs, and evidence. Cross-tenant object identifiers return `404` rather than revealing that the object exists.
+Tenant filters apply to assets, agents, policy audits and bundles, exceptions, connector runs and schedules, classification reviews, AI usage events, lineage, graph edges, jobs, evidence, integrations, and SCIM resources. Cross-tenant object identifiers return `404` rather than revealing that the object exists.
 
 Use separate databases when policy requires physical, cryptographic, regional, or customer-managed-key isolation.
-
-## OIDC boundary
-
-`ODG_OIDC_ISSUER` and `ODG_OIDC_AUDIENCE` describe the intended identity provider and audience. v1.2 exposes this integration boundary but does not perform provider-specific JWT validation. Shared deployments must use a validating identity-aware gateway until application validation is implemented.

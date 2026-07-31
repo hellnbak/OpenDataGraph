@@ -15,6 +15,6 @@ Lifecycle findings remain advisory until an explicitly authorized workflow perfo
 
 ## Contribution terms
 
-OpenDataGraph v1.2.0 is distributed under `FSL-1.1-ALv2`. By submitting a contribution, you represent that you have the right to provide it and agree that it may be distributed under the project license.
+OpenDataGraph v1.3.0 is distributed under `FSL-1.1-ALv2`. By submitting a contribution, you represent that you have the right to provide it and agree that it may be distributed under the project license.
 
 The project does not yet include a contributor license agreement. External code contributions must not be merged until contribution terms supporting both the source-available project and potential commercial licensing have been reviewed and documented. This protects contributors, users, and the licensor from ambiguous rights.

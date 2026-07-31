@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.3.0 - 2026-07-30
+
+### Added
+
+- Managed tenant-scoped connector schedules with worker-safe due-time claiming
+- Shared provider request budgets enforced across direct scans, schedules, and workers
+- Signed provider-specific OIDC validation with claim and role mapping
+- SCIM 2.0 user and group provisioning with bounded payloads and dedicated authentication
+- Evidence retention defaults, governance updates, legal hold, deletion metadata, and retention jobs
+- Versioned policy bundles with submission, approval, activation, retirement, rollback, and scoped exceptions
+- Allowlisted signed webhook destinations, delivery records, worker retries, and observe or enforce modes
+- Idempotent OpenLineage ingestion and bounded advanced relational graph traversal
+- Alembic upgrade from v1.2 and deterministic tests for every v1.3 control plane
+
+### Changed
+
+- Updated application, console, chart, policy, and documentation versions to `1.3.0`
+- Reworked the README to preserve cumulative v1.1 and v1.2 platform capabilities
+- Expanded authentication, connector, evidence, policy, API, graph, deployment, security, and operations documentation
+
 ## 1.2.0 - 2026-07-30
 
 ### Added

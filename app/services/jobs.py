@@ -13,6 +13,9 @@ from app.config import settings
 from app.models import BackgroundJob, utc_now
 from app.observability import JOBS
 from app.services.connectors import ingest_connector, safe_connector_error
+from app.services.evidence import purge_expired_evidence
+from app.services.integrations import deliver_integration
+from app.services.schedules import ProviderRateLimitExceeded, provider_request_guard
 from app.services.search import reindex_tenant
 from connectors.gdrive import GoogleDriveConnector
 from connectors.github import GitHubConnector
@@ -22,7 +25,12 @@ from connectors.security import validate_https_url
 from connectors.sharepoint import SharePointConnector
 
 
-SUPPORTED_JOB_TYPES = {"connector.scan", "catalog.reindex"}
+SUPPORTED_JOB_TYPES = {
+    "connector.scan",
+    "catalog.reindex",
+    "evidence.retention",
+    "integration.deliver",
+}
 SUPPORTED_CONNECTORS = {"aws-s3", "google-drive", "github", "gitlab", "sharepoint"}
 
 
@@ -36,7 +44,7 @@ def enqueue_job(
 ) -> BackgroundJob:
     if job_type not in SUPPORTED_JOB_TYPES:
         raise ValueError(f"Unsupported job type: {job_type}")
-    _validate_payload(job_type, payload)
+    validate_job_payload(job_type, payload)
     job = BackgroundJob(
         tenant_id=tenant_id,
         job_id=str(uuid4()),
@@ -86,7 +94,7 @@ def execute_job(db: Session, job: BackgroundJob) -> None:
     try:
         payload = json.loads(job.payload_json)
         if job.job_type == "connector.scan":
-            connector = _build_connector(payload)
+            connector = _build_connector(payload, db, job.tenant_id)
             result = asyncio.run(
                 ingest_connector(
                     db,
@@ -98,6 +106,15 @@ def execute_job(db: Session, job: BackgroundJob) -> None:
             )
         elif job.job_type == "catalog.reindex":
             result = reindex_tenant(db, job.tenant_id)
+        elif job.job_type == "evidence.retention":
+            result = purge_expired_evidence(
+                db,
+                job.tenant_id,
+                deleted_by=f"job:{job.job_id}",
+                limit=int(payload.get("limit", 500)),
+            )
+        elif job.job_type == "integration.deliver":
+            result = deliver_integration(db, job.tenant_id, payload["delivery_id"])
         else:
             raise RuntimeError(f"Unsupported job type: {job.job_type}")
         db.refresh(job)
@@ -114,7 +131,12 @@ def execute_job(db: Session, job: BackgroundJob) -> None:
             job.finished_at = utc_now()
         else:
             job.status = "pending"
-            job.available_at = utc_now() + timedelta(seconds=min(300, 2**job.attempts))
+            retry_seconds = (
+                exc.retry_after_seconds
+                if isinstance(exc, ProviderRateLimitExceeded)
+                else min(300, 2**job.attempts)
+            )
+            job.available_at = utc_now() + timedelta(seconds=retry_seconds)
             job.claimed_at = None
         db.commit()
         JOBS.labels(job.job_type, job.status).inc()
@@ -178,7 +200,7 @@ def retry_job(db: Session, job: BackgroundJob) -> BackgroundJob:
     return job
 
 
-def _validate_payload(job_type: str, payload: dict) -> None:
+def validate_job_payload(job_type: str, payload: dict) -> None:
     serialized = json.dumps(payload)
     if len(serialized.encode()) > 16_384:
         raise ValueError("Job payload exceeds 16 KiB")
@@ -204,13 +226,22 @@ def _validate_payload(job_type: str, payload: dict) -> None:
             )
         elif connector_type == "sharepoint" and payload.get("cursor"):
             validate_https_url(payload["cursor"], settings.sharepoint_allowed_hosts)
+    elif job_type == "integration.deliver":
+        if set(payload) != {"delivery_id"} or not isinstance(payload.get("delivery_id"), str):
+            raise ValueError("Integration delivery jobs require only delivery_id")
 
 
-def _build_connector(payload: dict):
+def _build_connector(payload: dict, db: Session, tenant_id: str):
     connector_type = payload["connector_type"]
     account = payload["account"]
+    guard = provider_request_guard(db, tenant_id, connector_type)
     if connector_type == "aws-s3":
-        return S3Connector(account, prefix=payload.get("prefix", ""), region=payload.get("region"))
+        return S3Connector(
+            account,
+            prefix=payload.get("prefix", ""),
+            region=payload.get("region"),
+            before_request=guard,
+        )
     secret = resolve_secret(payload["secret_ref"]) if payload.get("secret_ref") else None
     if connector_type == "google-drive":
         try:
@@ -222,6 +253,7 @@ def _build_connector(payload: dict):
             credentials_info=credentials_info,
             impersonate_user=payload.get("impersonate_user"),
             drive_id=payload.get("drive_id"),
+            before_request=guard,
         )
     if connector_type == "github":
         return GitHubConnector(
@@ -229,6 +261,7 @@ def _build_connector(payload: dict):
             secret or "",
             payload.get("api_url") or "https://api.github.com",
             allowed_hosts=settings.github_allowed_hosts,
+            before_request=guard,
         )
     if connector_type == "gitlab":
         return GitLabConnector(
@@ -236,6 +269,7 @@ def _build_connector(payload: dict):
             secret or "",
             payload.get("api_url") or "https://gitlab.com/api/v4",
             allowed_hosts=settings.gitlab_allowed_hosts,
+            before_request=guard,
         )
     if connector_type == "sharepoint":
         site_id = payload.get("site_id") or account
@@ -247,6 +281,7 @@ def _build_connector(payload: dict):
             drive_id,
             secret or "",
             allowed_hosts=settings.sharepoint_allowed_hosts,
+            before_request=guard,
         )
     raise ValueError(f"Unsupported connector type: {connector_type}")
 

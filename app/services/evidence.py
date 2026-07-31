@@ -1,7 +1,11 @@
 import hashlib
 import re
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.config import settings
+from app.models import EvidenceRecord, utc_now
 
 
 def store_evidence(
@@ -59,6 +63,58 @@ def load_evidence(storage_uri: str) -> bytes:
             raise ValueError("Stored evidence exceeds the configured size limit")
         return content
     raise ValueError("Unsupported evidence URI")
+
+
+def delete_evidence(storage_uri: str) -> None:
+    if storage_uri.startswith("local://"):
+        object_key = storage_uri.removeprefix("local://")
+        root = settings.evidence_local_directory.resolve()
+        path = (root / object_key).resolve()
+        if not path.is_relative_to(root):
+            raise ValueError("Invalid local evidence path")
+        path.unlink(missing_ok=True)
+        return
+    if storage_uri.startswith("s3://"):
+        bucket_and_key = storage_uri.removeprefix("s3://")
+        bucket, object_key = bucket_and_key.split("/", 1)
+        _s3_client().delete_object(Bucket=bucket, Key=object_key)
+        return
+    raise ValueError("Unsupported evidence URI")
+
+
+def purge_expired_evidence(
+    db: Session,
+    tenant_id: str,
+    deleted_by: str = "retention-worker",
+    limit: int = 500,
+) -> dict:
+    records = list(
+        db.scalars(
+            select(EvidenceRecord)
+            .where(
+                EvidenceRecord.tenant_id == tenant_id,
+                EvidenceRecord.deleted_at.is_(None),
+                EvidenceRecord.legal_hold.is_(False),
+                EvidenceRecord.retention_until.is_not(None),
+                EvidenceRecord.retention_until <= utc_now(),
+            )
+            .order_by(EvidenceRecord.retention_until)
+            .limit(limit)
+        ).all()
+    )
+    deleted = failed = 0
+    for record in records:
+        try:
+            delete_evidence(record.storage_uri)
+        except (OSError, RuntimeError, ValueError):
+            failed += 1
+            continue
+        record.deleted_at = utc_now()
+        record.deleted_by = deleted_by
+        record.deletion_reason = "Retention period expired"
+        deleted += 1
+    db.commit()
+    return {"deleted": deleted, "failed": failed, "examined": len(records)}
 
 
 def evidence_health() -> dict:

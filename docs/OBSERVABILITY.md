@@ -1,6 +1,6 @@
 # Observability
 
-OpenDataGraph v1.2 exposes health, readiness, metrics, structured logs, and optional traces.
+OpenDataGraph v1.3 exposes health, readiness, metrics, structured logs, and optional traces.
 
 ## Endpoints
 
