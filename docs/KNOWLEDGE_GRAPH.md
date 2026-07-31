@@ -1,8 +1,6 @@
 # Knowledge Graph
 
-OpenDataGraph v1.1 stores directed relationships in the primary relational database.
-
-Examples:
+OpenDataGraph v1.2 stores tenant-scoped directed relationships in the primary relational database.
 
 ```text
 asset -> owned_by -> identity
@@ -11,10 +9,8 @@ agent -> accessed -> asset
 repository -> contains -> asset
 ```
 
-Each edge contains source type and ID, relationship, target type and ID, optional JSON metadata, and creation time.
+Each edge contains tenant, source type and ID, relationship, target type and ID, optional JSON metadata, and creation time. Connector ingestion avoids duplicate structural edges while AI usage may record multiple event-specific access edges.
 
-## API
+`GET /api/v1/graph/relationships` lists recent edges and can filter by `asset_id` or `agent_key`. Every query is restricted to the authenticated tenant.
 
-`GET /api/v1/graph/relationships` lists recent edges. Filter by `asset_id` or `agent_key`.
-
-The relational design avoids a mandatory graph database while the query model is still evolving. A future release can introduce a specialized graph backend without changing the external edge representation.
+The relational design avoids a mandatory graph database while the query model evolves. OpenSearch does not replace graph-edge persistence.

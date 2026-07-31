@@ -1,0 +1,97 @@
+replicaCount: 2
+
+image:
+  repository: opendatagraph
+  tag: "1.2.0"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  fsGroup: 10001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: true
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: opendatagraph.example.invalid
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+secretName: opendatagraph-runtime
+
+config:
+  environment: production
+  defaultTenant: default
+  autoSeedDemo: "false"
+  authDisabled: "false"
+  classificationMode: metadata
+  searchBackend: opensearch
+  opensearchRequired: "true"
+  evidenceBackend: s3
+  evidencePrefix: evidence
+  githubAllowedHosts: api.github.com
+  gitlabAllowedHosts: gitlab.com
+  sharepointAllowedHosts: graph.microsoft.com
+  logFormat: json
+  metricsEnabled: "true"
+  workerPollSeconds: "2"
+  workerClaimTimeoutSeconds: "900"
+
+worker:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  enabled: true
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

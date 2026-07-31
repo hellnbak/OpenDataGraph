@@ -1,0 +1,1 @@
+OpenDataGraph database migrations. Run `alembic upgrade head` before starting shared deployments.

@@ -14,8 +14,10 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements.txt
       - run: ruff check .
+      - run: ODG_DATABASE_URL=sqlite:////tmp/opendatagraph-ci.db alembic upgrade head
       - run: pytest -q
-      - run: python -m compileall -q app connectors mcp_server.py
+      - run: python -m compileall -q app connectors migrations mcp_server.py
+      - run: ODG_POSTGRES_PASSWORD=ci-only docker compose config --quiet
       - run: pip install pip-audit
       - run: pip-audit -r requirements.txt
       - uses: anchore/sbom-action@v0
@@ -38,4 +40,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t opendatagraph:${{ github.sha }} .
+      - run: DOCKER_BUILDKIT=1 docker build -t opendatagraph:${{ github.sha }} .
+      - run: docker run --rm -v "$PWD:/work" -w /work alpine/helm:3.18.4 lint deploy/helm/opendatagraph
+      - run: docker run --rm -v "$PWD:/work" -w /work/deploy/aws hashicorp/terraform:1.12.2 fmt -check -recursive

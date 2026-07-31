@@ -1,6 +1,6 @@
 # Enterprise Demo Mode
 
-Enterprise Demo Mode creates screenshot-ready synthetic organizations that demonstrate OpenDataGraph at realistic scale without connecting to live systems.
+Enterprise Demo Mode creates screenshot-ready synthetic organizations inside the authenticated tenant without connecting to live systems.
 
 ## Profiles
 
@@ -52,4 +52,4 @@ curl http://localhost:8080/api/v1/demo/profiles
 
 ## Safety
 
-Enterprise Demo Mode never connects to a cloud account. Generating a profile replaces the current local catalog, but it does not alter any external system. The generated records are clearly marked with `synthetic: true`.
+Enterprise Demo Mode never connects to a cloud account. Generating a profile replaces only the authenticated tenant's catalog, but it does not alter any external system. The generated records are clearly marked with `synthetic: true`.

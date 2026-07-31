@@ -9,6 +9,7 @@
 5. In **Test an AI access decision**, select that asset and choose **External AI**. Capture the deny decision and required controls.
 6. Evaluate a lower-risk asset against **Internal RAG** to show a conditional or allow response.
 7. Open `/docs` and capture the API surface for a technical audience.
+8. Show the tenant identifier, background-job count, evidence count, and search backend in the summary response.
 
 ## Suggested captions
 
@@ -19,4 +20,4 @@
 
 ## Demo caveats
 
-State clearly that Enterprise Demo Mode uses synthetic records and that lifecycle actions are recommendations only. Live connector scans are separate from generated demo data. Do not imply that last-access evidence exists for every storage provider.
+State clearly that Enterprise Demo Mode uses synthetic records within the authenticated tenant and that lifecycle actions are recommendations only. Live connector scans are separate from generated demo data. Do not imply that last-access evidence exists for every storage provider.

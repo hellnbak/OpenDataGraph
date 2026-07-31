@@ -1,18 +1,20 @@
+import hashlib
 import json
+import re
 from contextlib import asynccontextmanager
-from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from connectors.s3 import scan_bucket
-from connectors.gdrive import scan_drive
+from connectors.gdrive import GoogleDriveConnector
 from connectors.github import GitHubConnector
 from connectors.gitlab import GitLabConnector
+from connectors.s3 import S3Connector
 from connectors.sharepoint import SharePointConnector
 from .classification import classify, heuristic_classify
 from .config import settings
@@ -22,17 +24,35 @@ from .enterprise_demo import PROFILES, generate_enterprise_assets, profile_catal
 from .lifecycle import calculate_lifecycle
 from .agents import DEMO_AGENTS
 from .auth import Principal, current_principal, oidc_configuration, require_role
-from .services.connectors import ingest_connector
+from .models import (
+    AIAgent,
+    AIUsageEvent,
+    BackgroundJob,
+    ClassificationReview,
+    ConnectorRun,
+    DataAsset,
+    DecisionAudit,
+    EvidenceRecord,
+    GraphEdge,
+    utc_now,
+)
+from .observability import configure_observability
+from .services.connectors import ingest_connector, safe_connector_error
+from .services.evidence import evidence_health, load_evidence, store_evidence
+from .services.jobs import cancel_job, enqueue_job, resolve_secret, retry_job
 from .services.policy import audit as audit_decision, evaluate as evaluate_decision
-from .models import AIAgent, AIUsageEvent, ClassificationReview, ConnectorRun, DataAsset, DecisionAudit, GraphEdge
+from .services.search import index_asset, search_asset_ids, search_health
 from .schemas import (
     AgentCreate,
     AgentOut,
     AIUsageEventCreate,
     AssetOut,
+    BackgroundJobOut,
     ClassificationReviewResolution,
+    ConnectorJobRequest,
     ConnectorScanRequest,
     DemoGenerateRequest,
+    EvidenceOut,
     GDriveScanRequest,
     PolicyDecision,
     PolicyRequest,
@@ -68,18 +88,19 @@ async def enrich_asset(asset: DataAsset, deterministic: bool = False) -> None:
         asset.ai_access_reason = "No high-risk indicators detected; standard enterprise controls apply."
 
 
-async def seed_demo() -> None:
+async def seed_demo(tenant_id: str | None = None) -> None:
+    tenant_id = tenant_id or settings.default_tenant
     db = SessionLocal()
     try:
-        if db.scalar(select(func.count(DataAsset.id))) == 0:
+        if db.scalar(select(func.count(DataAsset.id)).where(DataAsset.tenant_id == tenant_id)) == 0:
             for item in DEMO_ASSETS:
-                asset = DataAsset(**item)
+                asset = DataAsset(tenant_id=tenant_id, **item)
                 await enrich_asset(asset, deterministic=True)
                 db.add(asset)
             db.commit()
-        if db.scalar(select(func.count(AIAgent.id))) == 0:
+        if db.scalar(select(func.count(AIAgent.id)).where(AIAgent.tenant_id == tenant_id)) == 0:
             for item in DEMO_AGENTS:
-                db.add(AIAgent(**item))
+                db.add(AIAgent(tenant_id=tenant_id, **item))
             db.commit()
     finally:
         db.close()
@@ -87,13 +108,15 @@ async def seed_demo() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    if settings.auto_create_schema:
+        Base.metadata.create_all(bind=engine)
     if settings.auto_seed_demo:
         await seed_demo()
     yield
 
 
-app = FastAPI(title=settings.app_name, version="1.1.0", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifespan)
+configure_observability(app)
 BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
@@ -106,7 +129,21 @@ def dashboard(request: Request):
 
 @app.get("/health")
 def health(db: Session = Depends(get_db)):
-    return {"ok": True, "version": "1.1.0", "assets": db.scalar(select(func.count(DataAsset.id)))}
+    db.execute(select(1))
+    return {"ok": True, "version": settings.version}
+
+
+@app.get("/ready")
+def readiness(db: Session = Depends(get_db)):
+    db.execute(select(1))
+    search = search_health()
+    evidence = evidence_health()
+    ready = evidence["ok"] and (search["ok"] or not settings.opensearch_required)
+    return Response(
+        content=json.dumps({"ok": ready, "database": {"ok": True}, "search": search, "evidence": evidence}),
+        status_code=200 if ready else 503,
+        media_type="application/json",
+    )
 
 
 @app.get("/api/v1/assets", response_model=list[AssetOut])
@@ -116,8 +153,13 @@ def list_assets(
     source: str | None = None,
     search: str | None = Query(default=None, max_length=200),
     db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("read-only")),
 ):
-    stmt = select(DataAsset).order_by(DataAsset.stale_score.desc(), DataAsset.id.desc())
+    stmt = (
+        select(DataAsset)
+        .where(DataAsset.tenant_id == principal.tenant_id)
+        .order_by(DataAsset.stale_score.desc(), DataAsset.id.desc())
+    )
     if sensitivity:
         stmt = stmt.where(DataAsset.sensitivity == sensitivity)
     if lifecycle:
@@ -125,21 +167,36 @@ def list_assets(
     if source:
         stmt = stmt.where(DataAsset.source == source)
     if search:
-        stmt = stmt.where(DataAsset.name.ilike(f"%{search}%"))
+        asset_ids = search_asset_ids(search, principal.tenant_id)
+        if asset_ids is not None:
+            if not asset_ids:
+                return []
+            stmt = stmt.where(DataAsset.id.in_(asset_ids))
+        else:
+            pattern = f"%{search}%"
+            stmt = stmt.where((DataAsset.name.ilike(pattern)) | (DataAsset.path.ilike(pattern)))
     return list(db.scalars(stmt).all())
 
 
 @app.get("/api/v1/assets/{asset_id}", response_model=AssetOut)
-def get_asset(asset_id: int, db: Session = Depends(get_db)):
-    asset = db.get(DataAsset, asset_id)
+def get_asset(
+    asset_id: int,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("read-only")),
+):
+    asset = _asset_for_tenant(db, asset_id, principal.tenant_id)
     if not asset:
         raise HTTPException(404, "Asset not found")
     return asset
 
 
 @app.get("/api/v1/summary")
-def summary(db: Session = Depends(get_db)):
-    assets = list(db.scalars(select(DataAsset)).all())
+def summary(
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("read-only")),
+):
+    tenant_id = principal.tenant_id
+    assets = list(db.scalars(select(DataAsset).where(DataAsset.tenant_id == tenant_id)).all())
     sensitivity, lifecycle, sources, domains = {}, {}, {}, {}
     total_assets = restricted_assets = stale_assets = ai_blocked = priority_reviews = 0
     storage_bytes = annual_storage_cost = 0
@@ -173,112 +230,196 @@ def summary(db: Session = Depends(get_db)):
         "ai_blocked": ai_blocked, "sensitivity": sensitivity, "lifecycle": lifecycle, "sources": sources, "domains": domains,
         "storage_bytes": storage_bytes, "priority_reviews": priority_reviews, "estimated_annual_savings": estimated_savings,
         "ai_readiness_score": max(18, min(94, round(88 - (restricted_assets/max(total_assets,1))*28 - (ai_blocked/max(total_assets,1))*22))),
-        "connector_runs": db.scalar(select(func.count(ConnectorRun.id))) or 0,
+        "tenant_id": tenant_id,
+        "connector_runs": db.scalar(
+            select(func.count(ConnectorRun.id)).where(ConnectorRun.tenant_id == tenant_id)
+        )
+        or 0,
         "pending_classification_reviews": db.scalar(
-            select(func.count(ClassificationReview.id)).where(ClassificationReview.status == "pending")
+            select(func.count(ClassificationReview.id)).where(
+                ClassificationReview.tenant_id == tenant_id,
+                ClassificationReview.status == "pending",
+            )
         ) or 0,
-        "ai_usage_events": db.scalar(select(func.count(AIUsageEvent.id))) or 0,
-        "graph_edges": db.scalar(select(func.count(GraphEdge.id))) or 0,
+        "ai_usage_events": db.scalar(
+            select(func.count(AIUsageEvent.id)).where(AIUsageEvent.tenant_id == tenant_id)
+        )
+        or 0,
+        "graph_edges": db.scalar(select(func.count(GraphEdge.id)).where(GraphEdge.tenant_id == tenant_id)) or 0,
+        "background_jobs": db.scalar(
+            select(func.count(BackgroundJob.id)).where(BackgroundJob.tenant_id == tenant_id)
+        )
+        or 0,
+        "evidence_records": db.scalar(
+            select(func.count(EvidenceRecord.id)).where(EvidenceRecord.tenant_id == tenant_id)
+        )
+        or 0,
+        "search_backend": settings.search_backend,
     }
 
 
 @app.get("/api/v1/agents", response_model=list[AgentOut])
-def list_agents(db: Session = Depends(get_db)):
-    return list(db.scalars(select(AIAgent).order_by(AIAgent.risk_level.desc(), AIAgent.name)).all())
+def list_agents(
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("read-only")),
+):
+    statement = (
+        select(AIAgent)
+        .where(AIAgent.tenant_id == principal.tenant_id)
+        .order_by(AIAgent.risk_level.desc(), AIAgent.name)
+    )
+    return list(db.scalars(statement).all())
 
 @app.post("/api/v1/agents", response_model=AgentOut)
-def create_agent(req: AgentCreate, db: Session = Depends(get_db)):
-    if db.scalar(select(AIAgent).where(AIAgent.key == req.key)):
+def create_agent(
+    req: AgentCreate,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("data-owner")),
+):
+    if db.scalar(
+        select(AIAgent).where(AIAgent.tenant_id == principal.tenant_id, AIAgent.key == req.key)
+    ):
         raise HTTPException(409, "Agent key already exists")
-    agent=AIAgent(**req.model_dump()); db.add(agent); db.commit(); db.refresh(agent); return agent
+    agent = AIAgent(tenant_id=principal.tenant_id, **req.model_dump())
+    db.add(agent)
+    db.commit()
+    db.refresh(agent)
+    return agent
 
 @app.get("/api/v1/policy/audit")
-def policy_audit(limit: int = Query(default=50, ge=1, le=500), db: Session = Depends(get_db)):
-    rows=list(db.scalars(select(DecisionAudit).order_by(DecisionAudit.created_at.desc()).limit(limit)).all())
-    return [{"id":r.id,"created_at":r.created_at,"agent_key":r.agent_key,"asset_id":r.asset_id,"action":r.action,"destination":r.destination,"purpose":r.purpose,"decision":r.decision,"risk_score":r.risk_score,"policy_version":r.policy_version,"reasons":json.loads(r.reasons_json),"controls":json.loads(r.controls_json)} for r in rows]
+def policy_audit(
+    limit: int = Query(default=50, ge=1, le=500),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("auditor")),
+):
+    rows = list(
+        db.scalars(
+            select(DecisionAudit)
+            .where(DecisionAudit.tenant_id == principal.tenant_id)
+            .order_by(DecisionAudit.created_at.desc())
+            .limit(limit)
+        ).all()
+    )
+    return [
+        {
+            "id": row.id,
+            "created_at": row.created_at,
+            "agent_key": row.agent_key,
+            "asset_id": row.asset_id,
+            "action": row.action,
+            "destination": row.destination,
+            "purpose": row.purpose,
+            "decision": row.decision,
+            "risk_score": row.risk_score,
+            "policy_version": row.policy_version,
+            "reasons": json.loads(row.reasons_json),
+            "controls": json.loads(row.controls_json),
+        }
+        for row in rows
+    ]
 
 @app.post("/api/v1/policy/evaluate", response_model=PolicyDecision)
-def evaluate_policy(req: PolicyRequest, db: Session = Depends(get_db)):
-    asset=db.get(DataAsset,req.asset_id)
-    if not asset: raise HTTPException(404,"Asset not found")
-    agent=db.scalar(select(AIAgent).where(AIAgent.key==req.agent_key))
-    if not agent: raise HTTPException(404,"AI agent not found")
-    result=evaluate_decision(agent,asset,req.destination,req.action,req.purpose)
-    audit_decision(db,req,result)
-    return PolicyDecision(asset_id=asset.id,agent_key=agent.key,destination=req.destination,action=req.action,purpose=req.purpose,**result)
+def evaluate_policy(
+    req: PolicyRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("analyst")),
+):
+    asset = _asset_for_tenant(db, req.asset_id, principal.tenant_id)
+    if not asset:
+        raise HTTPException(404, "Asset not found")
+    agent = _agent_for_tenant(db, req.agent_key, principal.tenant_id)
+    if not agent:
+        raise HTTPException(404, "AI agent not found")
+    result = evaluate_decision(agent, asset, req.destination, req.action, req.purpose)
+    audit_decision(db, req, result, principal.tenant_id)
+    return PolicyDecision(
+        asset_id=asset.id,
+        agent_key=agent.key,
+        destination=req.destination,
+        action=req.action,
+        purpose=req.purpose,
+        **result,
+    )
 
 
 @app.post("/api/v1/connectors/s3/scan")
-async def scan_s3(req: S3ScanRequest, db: Session = Depends(get_db)):
-    imported = 0
-    updated = 0
+async def scan_s3(
+    req: S3ScanRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("connector-operator")),
+):
     try:
-        records = list(scan_bucket(req.bucket, req.prefix, req.region, req.max_objects))
+        connector = S3Connector(req.bucket, req.prefix, req.region)
+        return await ingest_connector(
+            db,
+            connector,
+            max_items=req.max_objects,
+            tenant_id=principal.tenant_id,
+        )
     except Exception as exc:
-        raise HTTPException(400, f"S3 scan failed: {exc}") from exc
-    for record in records:
-        existing = db.scalar(select(DataAsset).where(DataAsset.external_id == record["external_id"]))
-        metadata = record.pop("metadata")
-        if existing:
-            asset = existing
-            for key, value in record.items():
-                setattr(asset, key, value)
-            asset.last_seen_at = datetime.utcnow()
-            updated += 1
-        else:
-            asset = DataAsset(**record, metadata_json=json.dumps(metadata))
-            db.add(asset)
-            imported += 1
-        await enrich_asset(asset)
-    db.commit()
-    return {"ok": True, "bucket": req.bucket, "imported": imported, "updated": updated}
+        raise HTTPException(400, f"S3 scan failed: {safe_connector_error(exc)}") from exc
 
 
 @app.post("/api/v1/connectors/google-drive/scan")
-async def scan_google_drive(req: GDriveScanRequest, db: Session = Depends(get_db)):
-    imported=updated=0
-    try: records=list(scan_drive(req.credentials_file,req.impersonate_user,req.drive_id,req.max_files))
-    except Exception as exc: raise HTTPException(400,f"Google Drive scan failed: {exc}") from exc
-    for record in records:
-        existing=db.scalar(select(DataAsset).where(DataAsset.external_id==record["external_id"]))
-        metadata=record.pop("metadata")
-        if existing:
-            asset=existing
-            for key,value in record.items(): setattr(asset,key,value)
-            asset.metadata_json=json.dumps(metadata); asset.last_seen_at=datetime.utcnow(); updated+=1
-        else:
-            asset=DataAsset(**record,metadata_json=json.dumps(metadata)); db.add(asset); imported+=1
-        await enrich_asset(asset)
-    db.commit()
-    return {"ok":True,"imported":imported,"updated":updated,"source":"google-drive"}
+async def scan_google_drive(
+    req: GDriveScanRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("connector-operator")),
+):
+    try:
+        credentials_info = json.loads(resolve_secret(f"file:{req.credentials_file}"))
+        connector = GoogleDriveConnector(
+            account=req.drive_id or req.impersonate_user or "my-drive",
+            credentials_info=credentials_info,
+            impersonate_user=req.impersonate_user,
+            drive_id=req.drive_id,
+        )
+        return await ingest_connector(
+            db,
+            connector,
+            max_items=req.max_files,
+            tenant_id=principal.tenant_id,
+        )
+    except Exception as exc:
+        raise HTTPException(400, f"Google Drive scan failed: {safe_connector_error(exc)}") from exc
 
 
 @app.post("/api/v1/demo/reset")
-async def reset_demo(db: Session = Depends(get_db)):
-    db.query(DataAsset).delete()
+async def reset_demo(
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("administrator")),
+):
+    db.query(DataAsset).filter(DataAsset.tenant_id == principal.tenant_id).delete()
     db.commit()
-    await seed_demo()
+    await seed_demo(principal.tenant_id)
     return {"ok": True}
 
 
 @app.get("/api/v1/demo/profiles")
-def demo_profiles():
+def demo_profiles(principal: Principal = Depends(require_role("read-only"))):
+    del principal
     return profile_catalog()
 
 
 @app.post("/api/v1/demo/generate")
-async def generate_demo(req: DemoGenerateRequest, db: Session = Depends(get_db)):
+async def generate_demo(
+    req: DemoGenerateRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("administrator")),
+):
     try:
         profile, records = generate_enterprise_assets(req.profile, req.samples, req.seed)
     except KeyError as exc:
         raise HTTPException(400, f"Unknown demo profile: {req.profile}") from exc
-    db.query(DataAsset).delete()
+    db.query(DataAsset).filter(DataAsset.tenant_id == principal.tenant_id).delete()
     db.commit()
     for record in records:
-        asset = DataAsset(**record)
+        asset = DataAsset(tenant_id=principal.tenant_id, **record)
         await enrich_asset(asset, deterministic=True)
         db.add(asset)
     db.commit()
+    for asset in db.scalars(select(DataAsset).where(DataAsset.tenant_id == principal.tenant_id)):
+        index_asset(asset)
     return {"ok": True, "profile": profile.key, "organization": profile.name,
             "sample_records": len(records), "represented_assets": profile.represented_assets}
 
@@ -295,23 +436,66 @@ async def scan_connector(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_role("connector-operator")),
 ):
-    del principal
     if not req.token:
         raise HTTPException(400, "A short-lived connector token is required")
-    if connector_type == "github":
-        connector = GitHubConnector(req.account, req.token, req.api_url or "https://api.github.com")
-    elif connector_type == "gitlab":
-        connector = GitLabConnector(req.account, req.token, req.api_url or "https://gitlab.com/api/v4")
-    elif connector_type == "sharepoint":
-        if not req.site_id or not req.drive_id:
-            raise HTTPException(400, "site_id and drive_id are required for SharePoint")
-        connector = SharePointConnector(req.site_id, req.drive_id, req.token)
-    else:
-        raise HTTPException(404, "Supported connector types: github, gitlab, sharepoint")
     try:
-        return await ingest_connector(db, connector, req.cursor, req.max_items)
+        if connector_type == "github":
+            connector = GitHubConnector(
+                req.account,
+                req.token,
+                req.api_url or "https://api.github.com",
+                allowed_hosts=settings.github_allowed_hosts,
+            )
+        elif connector_type == "gitlab":
+            connector = GitLabConnector(
+                req.account,
+                req.token,
+                req.api_url or "https://gitlab.com/api/v4",
+                allowed_hosts=settings.gitlab_allowed_hosts,
+            )
+        elif connector_type == "sharepoint":
+            if not req.site_id or not req.drive_id:
+                raise HTTPException(400, "site_id and drive_id are required for SharePoint")
+            connector = SharePointConnector(
+                req.site_id,
+                req.drive_id,
+                req.token,
+                allowed_hosts=settings.sharepoint_allowed_hosts,
+            )
+        else:
+            raise HTTPException(404, "Supported connector types: github, gitlab, sharepoint")
+        return await ingest_connector(
+            db,
+            connector,
+            req.cursor,
+            req.max_items,
+            tenant_id=principal.tenant_id,
+        )
+    except HTTPException:
+        raise
     except Exception as exc:
-        raise HTTPException(400, f"{connector_type} scan failed: {exc}") from exc
+        raise HTTPException(400, f"{connector_type} scan failed: {safe_connector_error(exc)}") from exc
+
+
+@app.post("/api/v1/connectors/{connector_type}/jobs", response_model=BackgroundJobOut, status_code=202)
+def enqueue_connector_job(
+    connector_type: str,
+    req: ConnectorJobRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("connector-operator")),
+):
+    payload = {"connector_type": connector_type, **req.model_dump(exclude_none=True, exclude={"max_attempts"})}
+    try:
+        return enqueue_job(
+            db,
+            tenant_id=principal.tenant_id,
+            job_type="connector.scan",
+            payload=payload,
+            created_by=principal.subject,
+            max_attempts=req.max_attempts,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @app.get("/api/v1/connectors/runs")
@@ -320,8 +504,14 @@ def connector_runs(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_role("auditor")),
 ):
-    del principal
-    rows = list(db.scalars(select(ConnectorRun).order_by(ConnectorRun.started_at.desc()).limit(limit)).all())
+    rows = list(
+        db.scalars(
+            select(ConnectorRun)
+            .where(ConnectorRun.tenant_id == principal.tenant_id)
+            .order_by(ConnectorRun.started_at.desc())
+            .limit(limit)
+        ).all()
+    )
     return [
         {
             "id": row.id,
@@ -346,11 +536,13 @@ def classification_reviews(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_role("analyst")),
 ):
-    del principal
     rows = list(
         db.scalars(
             select(ClassificationReview)
-            .where(ClassificationReview.status == status)
+            .where(
+                ClassificationReview.tenant_id == principal.tenant_id,
+                ClassificationReview.status == status,
+            )
             .order_by(ClassificationReview.confidence, ClassificationReview.created_at)
         ).all()
     )
@@ -380,10 +572,15 @@ def resolve_classification_review(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_role("analyst")),
 ):
-    review = db.get(ClassificationReview, review_id)
+    review = db.scalar(
+        select(ClassificationReview).where(
+            ClassificationReview.id == review_id,
+            ClassificationReview.tenant_id == principal.tenant_id,
+        )
+    )
     if not review:
         raise HTTPException(404, "Classification review not found")
-    asset = db.get(DataAsset, review.asset_id)
+    asset = _asset_for_tenant(db, review.asset_id, principal.tenant_id)
     if not asset:
         raise HTTPException(404, "Reviewed asset not found")
     if req.status == "corrected":
@@ -398,8 +595,9 @@ def resolve_classification_review(
     review.corrected_sensitivity = req.sensitivity
     review.corrected_labels = ", ".join(req.labels) if req.labels else None
     review.reviewer = req.reviewer or principal.subject
-    review.resolved_at = datetime.utcnow()
+    review.resolved_at = utc_now()
     db.commit()
+    index_asset(asset)
     return {"ok": True, "review_id": review.id, "status": review.status, "asset_id": asset.id}
 
 
@@ -409,11 +607,10 @@ def simulate_policy(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_role("analyst")),
 ):
-    del principal
-    asset = db.get(DataAsset, req.asset_id)
+    asset = _asset_for_tenant(db, req.asset_id, principal.tenant_id)
     if not asset:
         raise HTTPException(404, "Asset not found")
-    agent = db.scalar(select(AIAgent).where(AIAgent.key == req.agent_key))
+    agent = _agent_for_tenant(db, req.agent_key, principal.tenant_id)
     if not agent:
         raise HTTPException(404, "AI agent not found")
     result = evaluate_decision(agent, asset, req.destination, req.action, req.purpose)
@@ -426,18 +623,23 @@ def ingest_ai_usage_event(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_role("analyst")),
 ):
-    del principal
-    existing = db.scalar(select(AIUsageEvent).where(AIUsageEvent.event_id == req.event_id))
+    existing = db.scalar(
+        select(AIUsageEvent).where(
+            AIUsageEvent.tenant_id == principal.tenant_id,
+            AIUsageEvent.event_id == req.event_id,
+        )
+    )
     if existing:
         return {"ok": True, "idempotent": True, "event_id": existing.event_id, "decision": existing.decision}
-    asset = db.get(DataAsset, req.asset_id)
+    asset = _asset_for_tenant(db, req.asset_id, principal.tenant_id)
     if not asset:
         raise HTTPException(404, "Asset not found")
-    agent = db.scalar(select(AIAgent).where(AIAgent.key == req.agent_key))
+    agent = _agent_for_tenant(db, req.agent_key, principal.tenant_id)
     if not agent:
         raise HTTPException(404, "AI agent not found")
     result = evaluate_decision(agent, asset, req.destination, req.action, req.purpose)
     event = AIUsageEvent(
+        tenant_id=principal.tenant_id,
         event_id=req.event_id,
         agent_key=req.agent_key,
         user_identity=req.user_identity,
@@ -454,6 +656,7 @@ def ingest_ai_usage_event(
     db.add(event)
     db.add(
         GraphEdge(
+            tenant_id=principal.tenant_id,
             source_type="agent",
             source_id=req.agent_key,
             relationship="accessed",
@@ -480,8 +683,14 @@ def list_ai_usage_events(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_role("auditor")),
 ):
-    del principal
-    rows = list(db.scalars(select(AIUsageEvent).order_by(AIUsageEvent.occurred_at.desc()).limit(limit)).all())
+    rows = list(
+        db.scalars(
+            select(AIUsageEvent)
+            .where(AIUsageEvent.tenant_id == principal.tenant_id)
+            .order_by(AIUsageEvent.occurred_at.desc())
+            .limit(limit)
+        ).all()
+    )
     return [
         {
             "event_id": row.event_id,
@@ -509,8 +718,11 @@ def graph_relationships(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_role("read-only")),
 ):
-    del principal
-    statement = select(GraphEdge).order_by(GraphEdge.created_at.desc())
+    statement = (
+        select(GraphEdge)
+        .where(GraphEdge.tenant_id == principal.tenant_id)
+        .order_by(GraphEdge.created_at.desc())
+    )
     if asset_id is not None:
         statement = statement.where(
             ((GraphEdge.source_type == "asset") & (GraphEdge.source_id == str(asset_id)))
@@ -530,3 +742,240 @@ def graph_relationships(
         }
         for row in rows
     ]
+
+
+@app.post("/api/v1/search/reindex", response_model=BackgroundJobOut, status_code=202)
+def enqueue_reindex(
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("administrator")),
+):
+    return enqueue_job(
+        db,
+        tenant_id=principal.tenant_id,
+        job_type="catalog.reindex",
+        payload={},
+        created_by=principal.subject,
+    )
+
+
+@app.get("/api/v1/jobs", response_model=list[BackgroundJobOut])
+def list_jobs(
+    status: str | None = None,
+    limit: int = Query(default=100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("auditor")),
+):
+    statement = (
+        select(BackgroundJob)
+        .where(BackgroundJob.tenant_id == principal.tenant_id)
+        .order_by(BackgroundJob.created_at.desc())
+    )
+    if status:
+        statement = statement.where(BackgroundJob.status == status)
+    return list(db.scalars(statement.limit(limit)).all())
+
+
+@app.get("/api/v1/jobs/{job_id}")
+def get_job(
+    job_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("auditor")),
+):
+    job = _job_for_tenant(db, job_id, principal.tenant_id)
+    if not job:
+        raise HTTPException(404, "Background job not found")
+    return {
+        "job_id": job.job_id,
+        "tenant_id": job.tenant_id,
+        "job_type": job.job_type,
+        "status": job.status,
+        "attempts": job.attempts,
+        "max_attempts": job.max_attempts,
+        "available_at": job.available_at,
+        "claimed_at": job.claimed_at,
+        "finished_at": job.finished_at,
+        "cancel_requested": job.cancel_requested,
+        "error": job.error,
+        "result": json.loads(job.result_json or "{}"),
+        "created_by": job.created_by,
+        "created_at": job.created_at,
+    }
+
+
+@app.post("/api/v1/jobs/{job_id}/cancel", response_model=BackgroundJobOut)
+def request_job_cancellation(
+    job_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("connector-operator")),
+):
+    job = _job_for_tenant(db, job_id, principal.tenant_id)
+    if not job:
+        raise HTTPException(404, "Background job not found")
+    _authorize_job_control(job, principal)
+    return cancel_job(db, job)
+
+
+@app.post("/api/v1/jobs/{job_id}/retry", response_model=BackgroundJobOut)
+def request_job_retry(
+    job_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("connector-operator")),
+):
+    job = _job_for_tenant(db, job_id, principal.tenant_id)
+    if not job:
+        raise HTTPException(404, "Background job not found")
+    _authorize_job_control(job, principal)
+    try:
+        return retry_job(db, job)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@app.post("/api/v1/evidence", response_model=EvidenceOut, status_code=201)
+async def upload_evidence(
+    category: str = Form(..., min_length=1, max_length=120),
+    subject_type: str = Form(..., min_length=1, max_length=80),
+    subject_id: str = Form(..., min_length=1, max_length=320),
+    metadata_json: str = Form("{}", max_length=16_384),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("data-owner")),
+):
+    content = await file.read(settings.evidence_max_bytes + 1)
+    if len(content) > settings.evidence_max_bytes:
+        raise HTTPException(413, f"Evidence exceeds the {settings.evidence_max_bytes}-byte limit")
+    try:
+        metadata = json.loads(metadata_json)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(400, "metadata_json must be valid JSON") from exc
+    if not isinstance(metadata, dict):
+        raise HTTPException(400, "metadata_json must contain a JSON object")
+    evidence_id = str(uuid4())
+    try:
+        storage_uri, digest = store_evidence(
+            principal.tenant_id,
+            evidence_id,
+            content,
+            file.content_type or "application/octet-stream",
+        )
+    except (RuntimeError, ValueError, OSError) as exc:
+        raise HTTPException(503, f"Evidence storage failed: {exc}") from exc
+    record = EvidenceRecord(
+        tenant_id=principal.tenant_id,
+        evidence_id=evidence_id,
+        category=category,
+        subject_type=subject_type,
+        subject_id=subject_id,
+        filename=Path(file.filename or "evidence.bin").name[:512],
+        content_type=file.content_type or "application/octet-stream",
+        storage_uri=storage_uri,
+        sha256=digest,
+        size_bytes=len(content),
+        metadata_json=json.dumps(metadata),
+        created_by=principal.subject,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return _evidence_response(record)
+
+
+@app.get("/api/v1/evidence", response_model=list[EvidenceOut])
+def list_evidence(
+    subject_type: str | None = None,
+    subject_id: str | None = None,
+    limit: int = Query(default=100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("auditor")),
+):
+    statement = (
+        select(EvidenceRecord)
+        .where(EvidenceRecord.tenant_id == principal.tenant_id)
+        .order_by(EvidenceRecord.created_at.desc())
+    )
+    if subject_type:
+        statement = statement.where(EvidenceRecord.subject_type == subject_type)
+    if subject_id:
+        statement = statement.where(EvidenceRecord.subject_id == subject_id)
+    return [_evidence_response(record) for record in db.scalars(statement.limit(limit)).all()]
+
+
+@app.get("/api/v1/evidence/{evidence_id}/download")
+def download_evidence(
+    evidence_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("auditor")),
+):
+    record = db.scalar(
+        select(EvidenceRecord).where(
+            EvidenceRecord.tenant_id == principal.tenant_id,
+            EvidenceRecord.evidence_id == evidence_id,
+        )
+    )
+    if not record:
+        raise HTTPException(404, "Evidence record not found")
+    try:
+        content = load_evidence(record.storage_uri)
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise HTTPException(503, f"Evidence retrieval failed: {exc}") from exc
+    if hashlib.sha256(content).hexdigest() != record.sha256:
+        raise HTTPException(503, "Evidence integrity verification failed")
+    filename = re.sub(r"[\r\n\"]", "_", Path(record.filename).name)
+    return Response(
+        content=content,
+        media_type=record.content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Content-SHA256": record.sha256,
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+def _asset_for_tenant(db: Session, asset_id: int, tenant_id: str) -> DataAsset | None:
+    return db.scalar(
+        select(DataAsset).where(
+            DataAsset.id == asset_id,
+            DataAsset.tenant_id == tenant_id,
+        )
+    )
+
+
+def _agent_for_tenant(db: Session, agent_key: str, tenant_id: str) -> AIAgent | None:
+    return db.scalar(
+        select(AIAgent).where(
+            AIAgent.key == agent_key,
+            AIAgent.tenant_id == tenant_id,
+        )
+    )
+
+
+def _job_for_tenant(db: Session, job_id: str, tenant_id: str) -> BackgroundJob | None:
+    return db.scalar(
+        select(BackgroundJob).where(
+            BackgroundJob.job_id == job_id,
+            BackgroundJob.tenant_id == tenant_id,
+        )
+    )
+
+
+def _authorize_job_control(job: BackgroundJob, principal: Principal) -> None:
+    if job.job_type == "catalog.reindex" and principal.role != "administrator":
+        raise HTTPException(403, "administrator role required for catalog reindex jobs")
+
+
+def _evidence_response(record: EvidenceRecord) -> dict:
+    return {
+        "evidence_id": record.evidence_id,
+        "tenant_id": record.tenant_id,
+        "category": record.category,
+        "subject_type": record.subject_type,
+        "subject_id": record.subject_id,
+        "filename": record.filename,
+        "content_type": record.content_type,
+        "sha256": record.sha256,
+        "size_bytes": record.size_bytes,
+        "metadata": json.loads(record.metadata_json or "{}"),
+        "created_by": record.created_by,
+        "created_at": record.created_at,
+    }

@@ -10,3 +10,6 @@ __pycache__/
 .vscode/
 dist/
 build/
+backups/
+evidence/
+secrets/

@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "opendatagraph.fullname" . }}
+  labels:
+    {{- include "opendatagraph.labels" . | nindent 4 }}
+data:
+  ODG_ENVIRONMENT: {{ .Values.config.environment | quote }}
+  ODG_AUTO_CREATE_SCHEMA: "false"
+  ODG_AUTO_SEED_DEMO: {{ .Values.config.autoSeedDemo | quote }}
+  ODG_DEFAULT_TENANT: {{ .Values.config.defaultTenant | quote }}
+  ODG_AUTH_DISABLED: {{ .Values.config.authDisabled | quote }}
+  ODG_CLASSIFICATION_MODE: {{ .Values.config.classificationMode | quote }}
+  ODG_SEARCH_BACKEND: {{ .Values.config.searchBackend | quote }}
+  ODG_OPENSEARCH_REQUIRED: {{ .Values.config.opensearchRequired | quote }}
+  ODG_EVIDENCE_BACKEND: {{ .Values.config.evidenceBackend | quote }}
+  ODG_EVIDENCE_PREFIX: {{ .Values.config.evidencePrefix | quote }}
+  ODG_SECRET_FILE_ROOTS: "/run/secrets"
+  ODG_GITHUB_ALLOWED_HOSTS: {{ .Values.config.githubAllowedHosts | quote }}
+  ODG_GITLAB_ALLOWED_HOSTS: {{ .Values.config.gitlabAllowedHosts | quote }}
+  ODG_SHAREPOINT_ALLOWED_HOSTS: {{ .Values.config.sharepointAllowedHosts | quote }}
+  ODG_LOG_FORMAT: {{ .Values.config.logFormat | quote }}
+  ODG_METRICS_ENABLED: {{ .Values.config.metricsEnabled | quote }}
+  ODG_WORKER_POLL_SECONDS: {{ .Values.config.workerPollSeconds | quote }}
+  ODG_WORKER_CLAIM_TIMEOUT_SECONDS: {{ .Values.config.workerClaimTimeoutSeconds | quote }}

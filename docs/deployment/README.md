@@ -3,36 +3,66 @@
 ## Docker Compose
 
 ```bash
+export ODG_POSTGRES_PASSWORD='replace-with-a-secret'
 docker compose up --build
 ```
 
-The stack includes PostgreSQL, OpenSearch, and OpenDataGraph.
+The stack includes PostgreSQL, OpenSearch, a one-shot migration service, the API, and a durable worker. Local evidence uses a named volume. Authentication remains disabled by default for local evaluation; enable it before shared use.
 
-Set `ODG_POSTGRES_PASSWORD` in the local environment or an approved secret store before starting the stack.
+## Database upgrades
+
+Shared deployments set `ODG_AUTO_CREATE_SCHEMA=false` and run:
+
+```bash
+alembic upgrade head
+```
+
+Back up and stop API and worker processes before upgrading an existing database. Downgrades are not supported.
+
+## Helm
+
+The chart is under `deploy/helm/opendatagraph`. It requires a pre-created Kubernetes Secret named by `secretName`. The Secret must contain runtime values including:
+
+- `ODG_DATABASE_URL`
+- `ODG_API_KEYS_JSON`
+- `ODG_OPENSEARCH_URL`
+- `ODG_EVIDENCE_BUCKET`
+- `ODG_EVIDENCE_REGION`
+- optional `OTEL_EXPORTER_OTLP_ENDPOINT`
+
+The migration hook runs before install and upgrade. The chart deploys multiple API and worker replicas, probes, autoscaling, a disruption budget, and a network policy. Configure TLS ingress, workload identity, secret injection, egress restrictions, and telemetry scraping for the target cluster.
+
+Provider endpoints must use HTTPS and match the provider-specific host allowlists in chart configuration. Add self-hosted provider domains explicitly and keep network-policy egress aligned with the same list.
+
+## AWS templates
+
+`deploy/aws` provisions encrypted Multi-AZ PostgreSQL with managed master credentials, encrypted VPC OpenSearch across two availability zones, private versioned S3 evidence storage, and runtime IAM permissions.
+
+The templates expect an existing VPC, private subnets, and application workload security groups. Review instance sizes, retention, deletion protection, encryption keys, IAM principals, logging, and cost before use.
+
+## Evidence
+
+Production deployments should use `ODG_EVIDENCE_BACKEND=s3`, bucket versioning, encryption, public-access blocking, lifecycle policy, and workload identity. Local evidence storage is for evaluation or controlled single-node environments.
+
+## Observability
+
+Collect `/metrics` through an internal scrape path. Set `OTEL_EXPORTER_OTLP_ENDPOINT` for an approved OTLP HTTP collector. Route JSON logs to centralized storage and alert on readiness failure, job failures, connector errors, elevated policy denies, database saturation, OpenSearch health, and evidence write failures.
+
+## Backup and recovery
+
+Use `python -m app.operations backup` for application-coordinated recovery testing. Managed PostgreSQL and S3 deployments also require provider-native snapshots, point-in-time recovery, versioning, retention, and periodic restore tests.
 
 ## Required production controls
 
 - TLS and identity-aware ingress
 - `ODG_AUTH_DISABLED=false`
-- Role-scoped API keys or an approved OIDC-validating gateway
-- Managed PostgreSQL and OpenSearch
-- External secret management
-- Network restrictions and connector egress controls
-- Database backups and tested recovery
-- Centralized logs, metrics, and alerts
-- Resource limits and health checks
+- tenant-bound, role-scoped identities
+- managed PostgreSQL, OpenSearch, and S3-compatible evidence
+- external secret management and workload identity
+- connector egress restrictions
+- migration and rollback plans
+- tested database and evidence recovery
+- centralized logs, metrics, traces, and alerts
+- resource limits, probes, autoscaling, and disruption budgets
 
-## Environment variables
-
-- `ODG_DATABASE_URL`
-- `ODG_AUTO_SEED_DEMO`
-- `ODG_CLASSIFICATION_MODE`
-- `ODG_CLASSIFICATION_REVIEW_THRESHOLD`
-- `ODG_AUTH_DISABLED`
-- `ODG_API_KEYS_JSON`
-- `ODG_OIDC_ISSUER`
-- `ODG_OIDC_AUDIENCE`
-- `ODG_POLICY_DIRECTORY`
-- `ODG_OPENSEARCH_URL`
-
-OpenDataGraph v1.1 does not include tenant isolation, background workers, managed migrations, or high-availability manifests. Those controls are planned for v1.2.
+See `.env.example` for the complete environment-variable list.

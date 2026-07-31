@@ -1,14 +1,19 @@
 import json
-from app.models import AIAgent, DataAsset, DecisionAudit
+
 from app.config import settings
+from app.models import AIAgent, DataAsset, DecisionAudit
 from app.services.policy_engine import evaluate_policies
 
-SENSITIVITY={"Public":0,"Internal":1,"Confidential":2,"Restricted":3,"Unclassified":2}
-POLICY_VERSION="1.1.0"
 
-def evaluate(agent:AIAgent, asset:DataAsset, destination:str, action:str, purpose:str):
-    reasons=[]; controls=["audit-log","identity-context"]; risk=20
-    external=destination not in {x.strip() for x in agent.allowed_destinations.split(',') if x.strip()}
+SENSITIVITY = {"Public": 0, "Internal": 1, "Confidential": 2, "Restricted": 3, "Unclassified": 2}
+POLICY_VERSION = "1.2.0"
+
+
+def evaluate(agent: AIAgent, asset: DataAsset, destination: str, action: str, purpose: str) -> dict:
+    reasons = []
+    controls = ["audit-log", "identity-context", "tenant-context"]
+    risk = 20
+    external = destination not in {item.strip() for item in agent.allowed_destinations.split(",") if item.strip()}
     destination_type = "public_ai" if external else "approved_private_ai"
     context = {
         "sensitivity": asset.sensitivity,
@@ -22,22 +27,68 @@ def evaluate(agent:AIAgent, asset:DataAsset, destination:str, action:str, purpos
         reasons.append(match.reason)
         controls.extend(match.controls)
         risk = max(risk, match.risk_score)
-    if agent.approval_status != "Approved": reasons.append("AI agent is not approved for production data access"); risk+=45
-    if SENSITIVITY.get(asset.sensitivity,2)>SENSITIVITY.get(agent.max_sensitivity,1): reasons.append(f"Asset sensitivity exceeds the agent's approved {agent.max_sensitivity} ceiling"); risk+=40
-    if asset.business_domain and agent.allowed_domains and asset.business_domain not in [x.strip() for x in agent.allowed_domains.split(',')]: reasons.append("Business domain is outside the agent's approved purpose boundary"); risk+=25
-    if external: reasons.append("Destination is not on the agent's approved destination list"); risk+=25
-    if asset.public_access and asset.sensitivity in {"Confidential","Restricted"}: reasons.append("Sensitive asset has public exposure"); risk+=25
-    if asset.sensitivity=="Restricted": controls += ["redact-direct-identifiers","private-model-only","no-training","retain-decision-logs-30d"]
-    elif asset.sensitivity=="Confidential": controls += ["redaction","no-training","approved-enterprise-endpoint"]
-    else: controls += ["standard-retention"]
-    if action in {"train","fine-tune"}: reasons.append("Training use requires explicit data-owner approval"); risk+=30; controls.append("data-owner-approval")
-    risk=min(100,risk)
+    if agent.approval_status != "Approved":
+        reasons.append("AI agent is not approved for production data access")
+        risk += 45
+    if SENSITIVITY.get(asset.sensitivity, 2) > SENSITIVITY.get(agent.max_sensitivity, 1):
+        reasons.append(f"Asset sensitivity exceeds the agent's approved {agent.max_sensitivity} ceiling")
+        risk += 40
+    approved_domains = [item.strip() for item in agent.allowed_domains.split(",")]
+    if asset.business_domain and agent.allowed_domains and asset.business_domain not in approved_domains:
+        reasons.append("Business domain is outside the agent's approved purpose boundary")
+        risk += 25
+    if external:
+        reasons.append("Destination is not on the agent's approved destination list")
+        risk += 25
+    if asset.public_access and asset.sensitivity in {"Confidential", "Restricted"}:
+        reasons.append("Sensitive asset has public exposure")
+        risk += 25
+    if asset.sensitivity == "Restricted":
+        controls += ["redact-direct-identifiers", "private-model-only", "no-training", "retain-decision-logs-30d"]
+    elif asset.sensitivity == "Confidential":
+        controls += ["redaction", "no-training", "approved-enterprise-endpoint"]
+    else:
+        controls += ["standard-retention"]
+    if action in {"train", "fine-tune"}:
+        reasons.append("Training use requires explicit data-owner approval")
+        risk += 30
+        controls.append("data-owner-approval")
+    risk = min(100, risk)
     policy_decision = policy_matches[0].decision if policy_matches else "allow"
-    if agent.approval_status!="Approved" or risk>=80 or policy_decision=="deny": decision="deny"
-    elif risk>=50 or policy_decision=="conditional": decision="conditional"
-    else: decision="allow"
-    if not reasons: reasons=["Agent, purpose, data sensitivity, and destination are within policy"]
-    return {"decision":decision,"risk_score":risk,"reasons":list(dict.fromkeys(reasons)),"controls":sorted(set(controls)),"confidence":min(.99,max(.60,asset.classification_confidence)),"policy_version":POLICY_VERSION,"expires_in_seconds":300,"matched_policies":[match.policy_id for match in policy_matches]}
+    if agent.approval_status != "Approved" or risk >= 80 or policy_decision == "deny":
+        decision = "deny"
+    elif risk >= 50 or policy_decision == "conditional":
+        decision = "conditional"
+    else:
+        decision = "allow"
+    if not reasons:
+        reasons = ["Agent, purpose, data sensitivity, and destination are within policy"]
+    return {
+        "decision": decision,
+        "risk_score": risk,
+        "reasons": list(dict.fromkeys(reasons)),
+        "controls": sorted(set(controls)),
+        "confidence": min(0.99, max(0.60, asset.classification_confidence)),
+        "policy_version": POLICY_VERSION,
+        "expires_in_seconds": 300,
+        "matched_policies": [match.policy_id for match in policy_matches],
+    }
 
-def audit(db, req, result):
-    row=DecisionAudit(agent_key=req.agent_key,asset_id=req.asset_id,action=req.action,destination=req.destination,purpose=req.purpose,decision=result["decision"],risk_score=result["risk_score"],policy_version=result["policy_version"],reasons_json=json.dumps(result["reasons"]),controls_json=json.dumps(result["controls"])); db.add(row); db.commit(); return row
+
+def audit(db, req, result, tenant_id: str = "default"):
+    row = DecisionAudit(
+        tenant_id=tenant_id,
+        agent_key=req.agent_key,
+        asset_id=req.asset_id,
+        action=req.action,
+        destination=req.destination,
+        purpose=req.purpose,
+        decision=result["decision"],
+        risk_score=result["risk_score"],
+        policy_version=result["policy_version"],
+        reasons_json=json.dumps(result["reasons"]),
+        controls_json=json.dumps(result["controls"]),
+    )
+    db.add(row)
+    db.commit()
+    return row
