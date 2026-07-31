@@ -1,6 +1,6 @@
 # Connectors
 
-OpenDataGraph v1.3 includes metadata-first adapters for AWS S3, Google Drive, GitHub, GitLab, and SharePoint / OneDrive.
+OpenDataGraph v1.4 includes metadata-first adapters for AWS S3, Google Drive, GitHub, GitLab, and SharePoint / OneDrive.
 
 All connectors normalize source records before tenant-scoped catalog ingestion. Runs record source, account, status, imported and updated counts, safe errors, timestamps, and opaque cursor progression.
 

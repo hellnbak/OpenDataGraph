@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.4.0 - 2026-07-30
+
+### Added
+
+- Five-field cron connector schedules with IANA time zones and recurring maintenance windows
+- Cached OIDC discovery metadata, bounded SCIM Bulk operations, and durable identity deprovisioning jobs
+- Integration dead-letter state, tenant delivery dashboards, and explicit replay with provenance
+- Structured policy bundle diffs, scoped approver delegation, and independently approved exception renewal
+- S3 Object Lock verification and two-person evidence disposition workflows
+- Composite tenant graph indexes, path explanations, and bounded JSON, CSV, and GraphML export
+- Alembic upgrade from v1.3 and deterministic tests for all v1.4 product-hardening controls
+
+### Changed
+
+- Updated application, console, chart, documentation, and release packaging versions to `1.4.0`
+- Extended existing schedule, SCIM, evidence, policy, integration, graph, job, and summary APIs without removing prior release capabilities
+- Expanded operator guidance for identity, retention, outbound delivery recovery, graph export, and production configuration
+
 ## 1.3.0 - 2026-07-30
 
 ### Added

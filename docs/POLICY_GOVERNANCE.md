@@ -1,29 +1,37 @@
 # Policy Governance
 
-OpenDataGraph v1.3 adds database-backed lifecycle state around deterministic policy definitions.
+Policy bundles use deterministic definitions and the lifecycle `draft`, `pending`, `approved`, `active`, and `retired`.
 
 ## Lifecycle
 
-1. A data owner creates a `draft` bundle.
-2. The author submits it to `pending`.
-3. An administrator approves it.
-4. An administrator activates it, retiring the previous active bundle.
-5. An approved or retired bundle can be selected as a rollback target.
+Data owners create and submit bundles. Administrators or eligible delegated approvers approve pending bundles. Outside development mode, an author cannot approve the same bundle. Activation retires the previous active bundle, and rollback reactivates an approved or retired version.
 
-Outside local development, the approving identity must differ from the author. Policy simulation evaluates the active bundle without creating a decision audit.
+## Change diffs
 
-## Exceptions
+`GET /api/v1/policy/bundles/{bundle_id}/diff` compares a bundle with the previous version of the same name. `against_bundle_id` selects another tenant bundle explicitly.
 
-Administrators can create expiring exceptions scoped by one or more of policy ID, agent, asset, destination, action, or purpose. Exceptions may override to `allow` or `conditional`, include a reason, and add required controls. Expired or revoked exceptions do not match.
+The response reports added and removed policy definitions plus field-level before and after values for changed policies. Policy IDs remain the stable comparison key.
 
-## APIs
+## Delegated approvers
 
-- `POST|GET /api/v1/policy/bundles`
-- `POST /api/v1/policy/bundles/{bundle_id}/submit`
-- `POST /api/v1/policy/bundles/{bundle_id}/approve`
-- `POST /api/v1/policy/bundles/{bundle_id}/activate`
-- `POST /api/v1/policy/bundles/{bundle_id}/rollback`
-- `POST|GET /api/v1/policy/exceptions`
-- `DELETE /api/v1/policy/exceptions/{exception_id}`
+Administrators manage tenant-scoped delegations through:
 
-Keep policy changes small, deterministic, reviewed, and covered by matching and non-matching tests.
+- `POST|GET /api/v1/policy/approver-delegations`
+- `DELETE /api/v1/policy/approver-delegations/{delegation_id}`
+
+A delegation names one subject, has a mandatory expiry, and grants bundle approval, exception-renewal approval, or both. Bundle approval may be limited to one bundle name. Revoked or expired delegations have no effect.
+
+Delegation does not change the subject's platform role or grant policy editing, activation, rollback, or delegation management.
+
+## Exceptions and renewal
+
+Exceptions remain time-bounded and scoped by one or more policy, agent, asset, destination, action, or purpose fields. An exception may override a matching decision to `allow` or `conditional` and add controls.
+
+An active exception requests a later expiry through:
+
+- `POST /api/v1/policy/exceptions/{exception_id}/renewal`
+- `POST /api/v1/policy/exceptions/{exception_id}/renewal/approve`
+
+Approval requires an administrator or delegated exception approver. Outside development mode, the requester and approver must differ. The current expiry remains authoritative until approval succeeds.
+
+Policy simulation evaluates lifecycle, active bundles, and active exceptions without creating an enforcement audit.

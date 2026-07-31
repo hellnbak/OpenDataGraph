@@ -10,7 +10,7 @@ Report suspected vulnerabilities through a monitored private security contact. D
 
 ## Deployment warning
 
-OpenDataGraph v1.3 adds signed OIDC validation, SCIM provisioning, schedules, evidence governance, policy lifecycle, and outbound integrations, but it remains a Community Preview. Do not expose it directly to the public internet or connect sensitive production sources without TLS, identity-aware ingress, external secret management, network restrictions, tested backups, centralized telemetry, and reviewed identity and integration configuration.
+OpenDataGraph v1.4 adds cached OIDC discovery, SCIM Bulk and deprovisioning, calendar schedules, evidence disposition, delegated policy approval, integration dead letters, and graph export, but it remains a Community Preview. Do not expose it directly to the public internet or connect sensitive production sources without TLS, identity-aware ingress, external secret management, network restrictions, tested backups, centralized telemetry, and reviewed identity, retention, export, and integration configuration.
 
 ## Credentials
 
@@ -21,6 +21,7 @@ OpenDataGraph v1.3 adds signed OIDC validation, SCIM provisioning, schedules, ev
 - Limit `ODG_SECRET_FILE_ROOTS` to read-only mounted secret directories.
 - Keep provider-specific endpoint allowlists narrow and align them with outbound network policy.
 - Keep integration hosts allowlisted and resolve webhook signing secrets only in workers.
+- Restrict OIDC discovery to configured issuer hosts and explicitly approve different JWKS hosts.
 - Store `ODG_SCIM_TOKENS_JSON` and OIDC provider configuration through approved secret management.
 - Rotate credentials after suspected disclosure.
 
@@ -28,12 +29,12 @@ OpenDataGraph v1.3 adds signed OIDC validation, SCIM provisioning, schedules, ev
 
 - Bind every API key to a single `tenant_id`.
 - Never trust a caller-supplied tenant header or request field.
-- Preserve tenant filters on object lookup, listing, idempotency, graph traversal, jobs, and evidence retrieval.
+- Preserve tenant filters on object lookup, listing, idempotency, graph traversal and export, jobs, evidence retrieval and disposition, integration replay, and identity workflows.
 - Use separate databases for strict regulatory or cryptographic isolation requirements.
 
 ## Data handling
 
-Connectors are metadata-first. Sampled content remains disabled unless source scope, byte limits, processing location, retention, and access are explicitly approved. OpenSearch documents exclude sampled content. Evidence uploads are bounded, retention-governed, and should contain only approved audit material. Legal hold prevents application deletion but must be aligned with object-store retention.
+Connectors are metadata-first. Sampled content remains disabled unless source scope, byte limits, processing location, retention, and access are explicitly approved. OpenSearch documents exclude sampled content. Evidence uploads are bounded, retention-governed, and should contain only approved audit material. Application legal hold and disposition approval do not replace provider Object Lock; verification must succeed before operators rely on storage enforcement.
 
 ## Operational endpoints
 

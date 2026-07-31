@@ -2,31 +2,31 @@
 
 OpenDataGraph is a source-available data intelligence and AI policy platform. It catalogs enterprise data, explains sensitivity and lifecycle findings, evaluates AI data-use policy, records observed AI activity, and exposes governed context through REST APIs, an operational console, and an MCP server.
 
-> Release: **v1.3.0 Community Preview**. Shared deployments require authentication, tenant-bound identities, TLS, external secret management, migrations, backups, network controls, and reviewed outbound integrations.
+> Release: **v1.4.0 Community Preview**. Shared deployments require authentication, tenant-bound identities, TLS, external secret management, migrations, backups, network controls, and reviewed outbound integrations.
 
 ## Platform capabilities
 
 - Enterprise metadata catalog with ownership, source identity, timestamps, exposure, encryption, lifecycle posture, and AI access context
 - Metadata-first connectors for AWS S3, Google Drive, GitHub, GitLab, and SharePoint / OneDrive through a normalized cursor-aware connector SDK
 - Deterministic classification, optional bounded enrichment, confidence and explanations, human review, and lifecycle recommendations
-- Explainable AI data-use decisions, YAML rules, versioned policy bundles, simulation, approvals, exceptions, activation, rollback, and audit history
-- AI agent registry, idempotent AI usage events, policy correlation, relational graph edges, OpenLineage ingestion, and bounded multi-hop graph queries
-- Tenant-bound API keys, signed provider-specific OIDC validation, SCIM user and group provisioning, ordered roles, and tenant-scoped APIs
-- Durable database-backed jobs, managed connector schedules, shared provider request budgets, retries, cancellation, stale-claim recovery, and reference-only secrets
+- Explainable AI data-use decisions, YAML rules, versioned policy bundles, simulation, diffs, delegated approvals, renewable exceptions, activation, rollback, and audit history
+- AI agent registry, idempotent AI usage events, policy correlation, indexed relational graph edges, OpenLineage ingestion, path explanations, bounded multi-hop queries, and export
+- Tenant-bound API keys, signed provider-specific OIDC validation with cached discovery, SCIM user, group, and bulk provisioning, deprovisioning workflows, ordered roles, and tenant-scoped APIs
+- Durable database-backed jobs, interval or time-zone-aware cron connector schedules, maintenance windows, shared provider request budgets, retries, cancellation, stale-claim recovery, and reference-only secrets
 - OpenSearch-backed metadata indexing with database fallback and tenant-scoped search
-- Bounded local or S3-compatible evidence storage with SHA-256 integrity, retention dates, governed deletion, and legal hold
-- Signed outbound alert and decision webhooks with explicit host allowlists, observable delivery state, and worker retries
+- Bounded local or S3-compatible evidence storage with SHA-256 integrity, retention dates, object-lock verification, disposition approvals, governed deletion, and legal hold
+- Signed outbound alert and decision webhooks with explicit host allowlists, delivery dashboards, dead-letter state, controlled replay, and worker retries
 - Alembic migrations, SQLite and PostgreSQL backup/restore, readiness checks, Prometheus metrics, JSON logs, request IDs, and optional OTLP tracing
 - Operational console, REST API, MCP server, Docker Compose, HA-oriented Helm chart, and AWS backing-service templates
 
-## New in v1.3
+## New in v1.4
 
-- Managed interval schedules for all queued connectors and tenant/provider request budgets shared across workers
-- OIDC signature, issuer, audience, lifetime, tenant, and role validation plus SCIM 2.0 user and group provisioning
-- Evidence retention defaults, legal-hold controls, governed deletion, and retention-cleanup jobs
-- Versioned policy lifecycle with submit, independent approval, activation, rollback, and bounded exceptions
-- Allowlisted signed webhooks for policy alerts and downstream decision-enforcement integrations
-- Idempotent OpenLineage run-event ingestion and tenant-scoped inbound, outbound, or bidirectional graph traversal
+- Five-field cron schedules use IANA time zones and skip bounded recurring maintenance windows
+- OIDC discovery metadata is cached; SCIM adds bounded Bulk requests and durable user deprovisioning
+- Failed integrations enter dead-letter state with delivery health summaries and explicit replay controls
+- Policy bundles expose structured diffs, approvers can be delegated by scope, and exceptions support independent renewal
+- Evidence can verify S3 Object Lock state and use two-person disposition approval before worker deletion
+- Composite relational graph indexes support path explanations and bounded JSON, CSV, or GraphML export
 
 ## Local start
 
@@ -67,7 +67,7 @@ The stack runs PostgreSQL, OpenSearch, a migration task, the API, and a backgrou
 
 ## Configuration
 
-Review `.env.example` before running outside local development. Important settings include `ODG_DATABASE_URL`, `ODG_DEFAULT_TENANT`, `ODG_AUTH_DISABLED`, `ODG_API_KEYS_JSON`, `ODG_OIDC_PROVIDERS_JSON`, `ODG_SCIM_TOKENS_JSON`, `ODG_SEARCH_BACKEND`, evidence configuration, `ODG_SECRET_FILE_ROOTS`, connector and integration host allowlists, and `OTEL_EXPORTER_OTLP_ENDPOINT`.
+Review `.env.example` before running outside local development. Important settings include `ODG_DATABASE_URL`, `ODG_DEFAULT_TENANT`, `ODG_AUTH_DISABLED`, `ODG_API_KEYS_JSON`, `ODG_OIDC_PROVIDERS_JSON`, `ODG_SCIM_TOKENS_JSON`, `ODG_SEARCH_BACKEND`, evidence and disposition configuration, `ODG_SECRET_FILE_ROOTS`, connector and integration host allowlists, graph export bounds, and `OTEL_EXPORTER_OTLP_ENDPOINT`.
 
 Keep `ODG_AUTH_DISABLED=true` only for trusted local development.
 
@@ -110,6 +110,6 @@ docker compose build
 
 ## License
 
-OpenDataGraph v1.3.0 is source-available under the [Functional Source License, Version 1.1, ALv2 Future License](LICENSE) (`FSL-1.1-ALv2`). Internal use, non-commercial education and research, and qualifying professional services are permitted. Competing commercial products and services are not permitted.
+OpenDataGraph v1.4.0 is source-available under the [Functional Source License, Version 1.1, ALv2 Future License](LICENSE) (`FSL-1.1-ALv2`). Internal use, non-commercial education and research, and qualifying professional services are permitted. Competing commercial products and services are not permitted.
 
-The v1.3.0 release becomes available under Apache License 2.0 on July 30, 2028. Earlier releases remain available under the terms distributed with those releases. Contact the licensor for commercial terms not granted by FSL.
+The v1.4.0 release becomes available under Apache License 2.0 on July 30, 2028. Earlier releases remain available under the terms distributed with those releases. Contact the licensor for commercial terms not granted by FSL.

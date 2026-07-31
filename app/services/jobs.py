@@ -13,8 +13,13 @@ from app.config import settings
 from app.models import BackgroundJob, utc_now
 from app.observability import JOBS
 from app.services.connectors import ingest_connector, safe_connector_error
-from app.services.evidence import purge_expired_evidence
-from app.services.integrations import deliver_integration
+from app.services.evidence import (
+    execute_disposition,
+    mark_disposition_error,
+    purge_expired_evidence,
+)
+from app.services.identity import execute_deprovision, mark_deprovision_error
+from app.services.integrations import deliver_integration, mark_delivery_dead_letter
 from app.services.schedules import ProviderRateLimitExceeded, provider_request_guard
 from app.services.search import reindex_tenant
 from connectors.gdrive import GoogleDriveConnector
@@ -29,6 +34,8 @@ SUPPORTED_JOB_TYPES = {
     "connector.scan",
     "catalog.reindex",
     "evidence.retention",
+    "evidence.disposition",
+    "identity.deprovision",
     "integration.deliver",
 }
 SUPPORTED_CONNECTORS = {"aws-s3", "google-drive", "github", "gitlab", "sharepoint"}
@@ -91,6 +98,7 @@ def execute_job(db: Session, job: BackgroundJob) -> None:
         db.commit()
         JOBS.labels(job.job_type, job.status).inc()
         return
+    payload = {}
     try:
         payload = json.loads(job.payload_json)
         if job.job_type == "connector.scan":
@@ -113,22 +121,43 @@ def execute_job(db: Session, job: BackgroundJob) -> None:
                 deleted_by=f"job:{job.job_id}",
                 limit=int(payload.get("limit", 500)),
             )
+        elif job.job_type == "evidence.disposition":
+            result = execute_disposition(
+                db,
+                job.tenant_id,
+                payload["disposition_id"],
+                executed_by=f"job:{job.job_id}",
+            )
+        elif job.job_type == "identity.deprovision":
+            result = execute_deprovision(
+                db,
+                job.tenant_id,
+                payload["workflow_id"],
+            )
         elif job.job_type == "integration.deliver":
             result = deliver_integration(db, job.tenant_id, payload["delivery_id"])
         else:
             raise RuntimeError(f"Unsupported job type: {job.job_type}")
         db.refresh(job)
         job.status = "cancelled" if job.cancel_requested else "completed"
-        job.result_json = json.dumps(result)
+        job.result_json = json.dumps(result, default=str)
         job.error = None
         job.finished_at = utc_now()
         db.commit()
         JOBS.labels(job.job_type, job.status).inc()
     except Exception as exc:
         job.error = safe_connector_error(exc)
-        if job.attempts >= job.max_attempts or job.cancel_requested:
+        final_failure = job.attempts >= job.max_attempts or job.cancel_requested
+        if final_failure:
             job.status = "cancelled" if job.cancel_requested else "failed"
             job.finished_at = utc_now()
+            if job.job_type == "integration.deliver" and not job.cancel_requested:
+                mark_delivery_dead_letter(
+                    db,
+                    job.tenant_id,
+                    payload["delivery_id"],
+                    job.error,
+                )
         else:
             job.status = "pending"
             retry_seconds = (
@@ -138,6 +167,21 @@ def execute_job(db: Session, job: BackgroundJob) -> None:
             )
             job.available_at = utc_now() + timedelta(seconds=retry_seconds)
             job.claimed_at = None
+        if job.job_type == "identity.deprovision" and payload.get("workflow_id"):
+            mark_deprovision_error(
+                db,
+                job.tenant_id,
+                payload["workflow_id"],
+                job.error,
+                final_failure and not job.cancel_requested,
+            )
+        elif job.job_type == "evidence.disposition" and payload.get("disposition_id"):
+            mark_disposition_error(
+                db,
+                job.tenant_id,
+                payload["disposition_id"],
+                job.error,
+            )
         db.commit()
         JOBS.labels(job.job_type, job.status).inc()
 
@@ -229,6 +273,12 @@ def validate_job_payload(job_type: str, payload: dict) -> None:
     elif job_type == "integration.deliver":
         if set(payload) != {"delivery_id"} or not isinstance(payload.get("delivery_id"), str):
             raise ValueError("Integration delivery jobs require only delivery_id")
+    elif job_type == "identity.deprovision":
+        if set(payload) != {"workflow_id"} or not isinstance(payload.get("workflow_id"), str):
+            raise ValueError("Identity deprovision jobs require only workflow_id")
+    elif job_type == "evidence.disposition":
+        if set(payload) != {"disposition_id"} or not isinstance(payload.get("disposition_id"), str):
+            raise ValueError("Evidence disposition jobs require only disposition_id")
 
 
 def _build_connector(payload: dict, db: Session, tenant_id: str):

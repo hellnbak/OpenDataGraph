@@ -1,64 +1,64 @@
-# OpenDataGraph v1.3.0
+# OpenDataGraph v1.4.0
 
-OpenDataGraph v1.3 adds the operational controls needed to run the v1.2 enterprise-deployment foundation continuously: managed ingestion schedules, shared provider budgets, validated federated identity, evidence governance, policy lifecycle, outbound integrations, and lineage-aware graph queries.
+OpenDataGraph v1.4 hardens continuous operation and governed recovery. It adds calendar-aware scheduling, identity lifecycle workflows, integration dead letters, delegated policy governance, evidence disposition approval, and explainable graph export.
 
-All v1.1 and v1.2 capabilities remain part of the platform. The README now separates cumulative platform capabilities from release-specific additions so earlier functionality remains visible.
+All v1.1, v1.2, and v1.3 capabilities remain part of the platform. The README keeps cumulative platform capabilities separate from release-specific additions.
 
-## Scheduled ingestion
+## Schedule calendars
 
-Connector operators can create, list, update, pause, and remove tenant-scoped interval schedules. Workers atomically claim due schedules and enqueue the existing reference-only `connector.scan` jobs.
+Connector schedules support fixed intervals or five-field cron expressions. Cron evaluation uses an IANA time zone and stores the resulting run time in UTC. Recurring maintenance windows use local weekday and `HH:MM` boundaries; eligible runs skip those windows. Existing interval schedules continue to run unchanged.
 
-Administrators can configure request budgets for each tenant and provider. Budgets are stored in the primary database and consumed before provider requests, so multiple schedules and workers share one limit window.
+## Identity lifecycle
 
-## Identity
+OIDC providers may use a configured HTTPS JWKS URL or same-host OpenID Connect discovery. Discovery documents are bounded, issuer-checked, JWKS-host checked, and cached for a configurable period.
 
-Bearer authentication validates configured OIDC providers using signed JWTs and exact issuer, audience, expiry, tenant, subject, and role claims. Provider configuration supports approved algorithms, claim paths, and role mapping.
+SCIM adds bounded Bulk requests with sequential `bulkId` reference resolution and partial error responses. Disabling or deleting a SCIM user creates a durable deprovisioning workflow. The worker deactivates the user, removes group memberships, records completion, and emits an optional integration event. SCIM credentials remain bound to one tenant and no tenant header is accepted.
 
-SCIM 2.0 endpoints provision tenant-scoped users and groups using a dedicated bearer token and tenant header. Password attributes are rejected, payloads are bounded, and SCIM credentials belong in external secret management.
+## Integration recovery
 
-## Evidence governance
+Webhook deliveries that exhaust worker retries enter `dead-letter` state. The delivery dashboard summarizes tenant-wide and endpoint-level success, failure, and dead-letter counts. Administrators may replay only failed or dead-letter deliveries; the new delivery records its origin, operator, and reason.
 
-New evidence receives the configured default retention period. Data owners can update retention and legal-hold state with an auditable reason. Evidence under legal hold cannot be deleted. Manual deletion removes the object and preserves deletion metadata; retention jobs delete only expired, unheld objects.
+Downstream receivers must continue deduplicating by `X-OpenDataGraph-Delivery`.
 
 ## Policy governance
 
-Policy bundles now move through `draft`, `pending`, `approved`, `active`, and `retired`. Activation retires the previous active bundle, and rollback can reactivate an approved or retired version. Non-development approval requires a different identity from the author.
+Policy bundle diffs report added, removed, and field-level changed policies. Administrators can delegate bundle or exception-renewal approval to a named tenant identity, optionally limited to one bundle name and always bounded by expiry.
 
-Administrators can create time-bounded, scoped exceptions that override a decision to `allow` or `conditional` and add required controls. Exceptions never create a broader `deny` bypass without an explicit scope and expiry.
+Active policy exceptions can request a later expiry. Approval requires an administrator or delegated approver and a different identity from the requester outside development mode.
 
-## Integrations
+## Evidence disposition
 
-Administrators can register allowlisted HTTPS webhook destinations in `observe` or `enforce` mode. Policy audits enqueue non-secret delivery records and worker jobs. Optional secrets are resolved only in the worker and used to create an HMAC-SHA256 signature.
+Evidence records track object-lock verification state. Local storage reports object lock as not applicable. S3 verification reads object retention and legal-hold state without retrieving object content.
 
-`enforce` mode communicates an authoritative decision to an approved downstream enforcement point; OpenDataGraph does not perform destructive source-system actions.
+Data owners can request evidence disposition. An independent administrator approves or rejects the request; approval queues worker execution. The worker rechecks application legal hold and S3 object-lock state before deleting. `ODG_EVIDENCE_DISPOSITION_APPROVAL_REQUIRED=true` changes retention cleanup from direct deletion to pending disposition creation.
 
-## Lineage and graph
+## Graph explanations and export
 
-The OpenLineage endpoint ingests bounded run events idempotently and records run-to-job, input-to-job, job-to-output, and input-to-output relationships. The advanced graph endpoint supports tenant-scoped inbound, outbound, or bidirectional traversal with relationship filters and bounded depth.
+Composite tenant/source, tenant/target, and tenant/relationship indexes improve larger relational graph queries. The path endpoint returns bounded paths with a human-readable explanation for each step. Tenant graph edges can be exported as bounded JSON, CSV, or GraphML.
 
 ## Upgrade
 
 1. Stop API and worker processes.
-2. Create and verify a database and evidence backup.
-3. Review the new identity, integration, retention, schedule, and graph settings.
+2. Create and verify database and evidence backups.
+3. Review cron, OIDC discovery, SCIM Bulk, disposition, integration replay, and graph export settings.
 4. Run `alembic upgrade head`.
 5. Start the API and workers.
-6. Configure OIDC, SCIM, and integration secrets outside the ConfigMap.
-7. Create provider budgets before enabling connector schedules.
-8. Verify `/ready`, schedule execution, policy activation, evidence hold behavior, and tenant isolation.
+6. Verify `/ready`, one cron schedule, OIDC discovery, SCIM deprovisioning, dead-letter replay, disposition approval, and tenant isolation.
 
 Downgrades are not supported. Restore the verified pre-upgrade backup if rollback is required.
 
 ## Compatibility and limitations
 
-- Existing synchronous connector and v1.2 job endpoints remain available.
-- Schedules use bounded fixed intervals; cron expressions and time-zone calendars are not included.
-- OIDC providers require an HTTPS JWKS URL and explicit claim mapping.
-- SCIM supports users, groups, filtering, replacement, patch, and deletion; bulk operations are not included.
-- Integration delivery is at least once and downstream receivers should deduplicate by delivery ID.
-- Relational graph traversal is bounded and is not a replacement for an external graph analytics platform.
+- Existing interval schedules, direct scans, queued jobs, and v1.3 APIs remain available.
+- Cron supports five numeric fields with lists, ranges, and steps; named months and weekdays are not accepted.
+- OIDC discovery must use the configured issuer host. A different JWKS host must be explicitly listed in `jwks_allowed_hosts`.
+- SCIM Bulk processes operations sequentially and returns per-operation status; it is not an all-or-nothing transaction.
+- Identity deprovisioning removes OpenDataGraph SCIM group memberships and emits an event; approved downstream systems remain responsible for their own access revocation.
+- Integration delivery is at least once. Replay creates a new delivery ID and never mutates the original dead letter.
+- Object-lock verification depends on storage permissions and reports `unavailable` when state cannot be confirmed.
+- Graph path and export operations remain bounded relational queries rather than an external graph analytics engine.
 - PostgreSQL is recommended for shared, scheduled, and multi-worker deployments.
 
 ## License
 
-OpenDataGraph v1.3.0 is source-available under `FSL-1.1-ALv2`. The license permits internal use, non-commercial education and research, and qualifying professional services while prohibiting competing commercial products and services. This release becomes available under Apache License 2.0 on July 30, 2028. Earlier releases retain the terms distributed with those releases.
+OpenDataGraph v1.4.0 is source-available under `FSL-1.1-ALv2`. The license permits internal use, non-commercial education and research, and qualifying professional services while prohibiting competing commercial products and services. This release becomes available under Apache License 2.0 on July 30, 2028. Earlier releases retain the terms distributed with those releases.

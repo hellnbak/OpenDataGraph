@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import Principal
 from app.config import settings
-from app.models import SCIMResource, utc_now
+from app.models import IdentityDeprovisionWorkflow, SCIMResource, utc_now
 
 
 SCIM_LIST_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:ListResponse"
@@ -109,6 +109,155 @@ def patch_resource(db: Session, resource: SCIMResource, operations: list[dict]) 
         else:
             raise ValueError("SCIM patch without a path requires an object value")
     return replace_resource(db, resource, payload)
+
+
+def request_deprovision(
+    db: Session,
+    resource: SCIMResource,
+    requested_by: str,
+) -> IdentityDeprovisionWorkflow:
+    if resource.resource_type != "User":
+        raise ValueError("Only SCIM users support deprovisioning workflows")
+    existing = db.scalar(
+        select(IdentityDeprovisionWorkflow).where(
+            IdentityDeprovisionWorkflow.tenant_id == resource.tenant_id,
+            IdentityDeprovisionWorkflow.resource_id == resource.resource_id,
+            IdentityDeprovisionWorkflow.status.in_(("pending", "running")),
+        )
+    )
+    if existing:
+        return existing
+    payload = json.loads(resource.data_json or "{}")
+    payload["active"] = False
+    resource.active = False
+    resource.data_json = json.dumps(payload)
+    resource.updated_at = utc_now()
+    workflow = IdentityDeprovisionWorkflow(
+        tenant_id=resource.tenant_id,
+        workflow_id=str(uuid4()),
+        resource_id=resource.resource_id,
+        requested_by=requested_by,
+    )
+    db.add(workflow)
+    db.commit()
+    db.refresh(workflow)
+    from app.services.jobs import enqueue_job
+
+    enqueue_job(
+        db,
+        tenant_id=resource.tenant_id,
+        job_type="identity.deprovision",
+        payload={"workflow_id": workflow.workflow_id},
+        created_by=requested_by,
+        max_attempts=5,
+    )
+    return workflow
+
+
+def execute_deprovision(
+    db: Session,
+    tenant_id: str,
+    workflow_id: str,
+) -> dict:
+    workflow = db.scalar(
+        select(IdentityDeprovisionWorkflow).where(
+            IdentityDeprovisionWorkflow.tenant_id == tenant_id,
+            IdentityDeprovisionWorkflow.workflow_id == workflow_id,
+        )
+    )
+    if not workflow:
+        raise ValueError("Identity deprovisioning workflow not found")
+    if workflow.status == "completed":
+        return deprovision_response(workflow)
+    resource = db.scalar(
+        select(SCIMResource).where(
+            SCIMResource.tenant_id == tenant_id,
+            SCIMResource.resource_type == "User",
+            SCIMResource.resource_id == workflow.resource_id,
+        )
+    )
+    if not resource:
+        raise ValueError("SCIM user for deprovisioning was not found")
+    workflow.status = "running"
+    workflow.error = None
+    memberships_removed = 0
+    groups = db.scalars(
+        select(SCIMResource).where(
+            SCIMResource.tenant_id == tenant_id,
+            SCIMResource.resource_type == "Group",
+        )
+    )
+    for group in groups:
+        payload = json.loads(group.data_json or "{}")
+        members = payload.get("members", [])
+        if not isinstance(members, list):
+            continue
+        retained = [
+            member
+            for member in members
+            if not isinstance(member, dict) or member.get("value") != resource.resource_id
+        ]
+        removed = len(members) - len(retained)
+        if removed:
+            memberships_removed += removed
+            payload["members"] = retained
+            group.data_json = json.dumps(payload)
+            group.updated_at = utc_now()
+    now = utc_now()
+    resource.active = False
+    resource.deprovisioned_at = now
+    resource.deprovisioned_by = workflow.requested_by
+    resource.updated_at = now
+    workflow.status = "completed"
+    workflow.memberships_removed = memberships_removed
+    workflow.completed_at = now
+    db.commit()
+    from app.services.integrations import queue_integration_event
+
+    queue_integration_event(
+        db,
+        tenant_id,
+        "identity.deprovisioned",
+        {
+            "workflow_id": workflow.workflow_id,
+            "resource_id": resource.resource_id,
+            "user_name": resource.user_name,
+            "memberships_removed": memberships_removed,
+        },
+        created_by=f"identity:{workflow.workflow_id}",
+    )
+    return deprovision_response(workflow)
+
+
+def deprovision_response(workflow: IdentityDeprovisionWorkflow) -> dict:
+    return {
+        "workflow_id": workflow.workflow_id,
+        "resource_id": workflow.resource_id,
+        "status": workflow.status,
+        "memberships_removed": workflow.memberships_removed,
+        "requested_by": workflow.requested_by,
+        "requested_at": workflow.requested_at,
+        "completed_at": workflow.completed_at,
+        "error": workflow.error,
+    }
+
+
+def mark_deprovision_error(
+    db: Session,
+    tenant_id: str,
+    workflow_id: str,
+    error: str,
+    failed: bool,
+) -> None:
+    workflow = db.scalar(
+        select(IdentityDeprovisionWorkflow).where(
+            IdentityDeprovisionWorkflow.tenant_id == tenant_id,
+            IdentityDeprovisionWorkflow.workflow_id == workflow_id,
+        )
+    )
+    if workflow:
+        workflow.status = "failed" if failed else "pending"
+        workflow.error = error
 
 
 def resource_response(resource: SCIMResource) -> dict:

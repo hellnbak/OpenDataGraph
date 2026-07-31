@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -140,6 +140,11 @@ class AIUsageEvent(TenantMixin, Base):
 
 class GraphEdge(TenantMixin, Base):
     __tablename__ = "graph_edges"
+    __table_args__ = (
+        Index("ix_graph_edges_tenant_source", "tenant_id", "source_type", "source_id"),
+        Index("ix_graph_edges_tenant_target", "tenant_id", "target_type", "target_id"),
+        Index("ix_graph_edges_tenant_relationship", "tenant_id", "relationship"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     source_type: Mapped[str] = mapped_column(String(80), index=True)
@@ -192,6 +197,11 @@ class EvidenceRecord(TenantMixin, Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     deleted_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
     deletion_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    object_lock_status: Mapped[str] = mapped_column(String(40), default="unverified", index=True)
+    object_lock_mode: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    object_lock_retain_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    object_lock_legal_hold: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    object_lock_verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_by: Mapped[str] = mapped_column(String(320))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
 
@@ -205,6 +215,10 @@ class ConnectorSchedule(TenantMixin, Base):
     connector_type: Mapped[str] = mapped_column(String(80), index=True)
     account: Mapped[str] = mapped_column(String(240))
     interval_seconds: Mapped[int] = mapped_column(Integer)
+    schedule_type: Mapped[str] = mapped_column(String(40), default="interval", index=True)
+    cron_expression: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    timezone: Mapped[str] = mapped_column(String(120), default="UTC")
+    maintenance_windows_json: Mapped[str] = mapped_column(Text, default="[]")
     payload_json: Mapped[str] = mapped_column(Text, default="{}")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     next_run_at: Mapped[datetime] = mapped_column(DateTime, index=True)
@@ -241,8 +255,27 @@ class SCIMResource(TenantMixin, Base):
     display_name: Mapped[str] = mapped_column(String(320))
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     data_json: Mapped[str] = mapped_column(Text, default="{}")
+    deprovisioned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    deprovisioned_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class IdentityDeprovisionWorkflow(TenantMixin, Base):
+    __tablename__ = "identity_deprovision_workflows"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "workflow_id", name="uq_identity_deprovision_tenant_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(String(36), index=True)
+    resource_id: Mapped[str] = mapped_column(String(36), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    memberships_removed: Mapped[int] = mapped_column(Integer, default=0)
+    requested_by: Mapped[str] = mapped_column(String(320))
+    requested_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class PolicyBundle(TenantMixin, Base):
@@ -288,6 +321,32 @@ class PolicyException(TenantMixin, Base):
     approved_by: Mapped[str] = mapped_column(String(320))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    renewal_status: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    renewal_requested_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    renewal_requested_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    renewal_requested_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    renewal_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    renewed_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    renewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class PolicyApproverDelegation(TenantMixin, Base):
+    __tablename__ = "policy_approver_delegations"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "delegation_id", name="uq_policy_delegation_tenant_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    delegation_id: Mapped[str] = mapped_column(String(36), index=True)
+    subject: Mapped[str] = mapped_column(String(320), index=True)
+    bundle_name: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    can_approve_bundles: Mapped[bool] = mapped_column(Boolean, default=True)
+    can_approve_exceptions: Mapped[bool] = mapped_column(Boolean, default=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_by: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class IntegrationEndpoint(TenantMixin, Base):
@@ -324,6 +383,9 @@ class IntegrationDelivery(TenantMixin, Base):
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     response_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    replayed_from: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    last_attempted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    dead_lettered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -342,3 +404,26 @@ class LineageEvent(TenantMixin, Base):
     producer: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     payload_json: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class EvidenceDisposition(TenantMixin, Base):
+    __tablename__ = "evidence_dispositions"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "disposition_id", name="uq_evidence_disposition_tenant_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    disposition_id: Mapped[str] = mapped_column(String(36), index=True)
+    evidence_id: Mapped[str] = mapped_column(String(36), index=True)
+    action: Mapped[str] = mapped_column(String(40), default="delete")
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    reason: Mapped[str] = mapped_column(Text)
+    requested_by: Mapped[str] = mapped_column(String(320))
+    requested_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    approved_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    rejected_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    executed_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)

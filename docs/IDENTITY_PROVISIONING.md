@@ -1,49 +1,69 @@
 # Identity Provisioning
 
-## OIDC
+OpenDataGraph validates end-user OIDC bearer tokens separately from SCIM provisioning credentials. Every accepted identity is bound to one tenant.
 
-Set `ODG_AUTH_DISABLED=false` and supply provider objects in `ODG_OIDC_PROVIDERS_JSON` through external secret management:
+## OIDC providers
+
+Configure providers in `ODG_OIDC_PROVIDERS_JSON`. Each provider requires an exact HTTPS issuer and audience. Supply either:
+
+- `jwks_url`, or
+- optional `discovery_url`; otherwise discovery uses `{issuer}/.well-known/openid-configuration`
+
+Discovery must use the issuer host. The discovered issuer must match exactly. The discovered JWKS host must match the issuer host unless explicitly listed in `jwks_allowed_hosts`. Documents are bounded to 64 KiB and cached for `ODG_OIDC_DISCOVERY_CACHE_SECONDS`.
+
+Example:
 
 ```json
 {
-  "enterprise-idp": {
-    "issuer": "https://identity.example.test/tenant",
+  "workforce": {
+    "issuer": "https://identity.example.test",
     "audience": "opendatagraph",
-    "jwks_url": "https://identity.example.test/tenant/keys",
-    "algorithms": ["RS256"],
-    "subject_claim": "sub",
     "tenant_claim": "tenant_id",
     "role_claim": "roles",
     "role_mapping": {
-      "ODG.Reader": "read-only",
+      "ODG.Auditor": "auditor",
       "ODG.Admin": "administrator"
     }
   }
 }
 ```
 
-Bearer tokens are accepted only when signature, algorithm, issuer, audience, issued-at, expiry, subject, tenant, and role validation succeeds. Tenant values must match the platform tenant identifier format.
+Only configured asymmetric JWT algorithms are accepted. Signature, issuer, audience, expiry, issued-at, subject, tenant, and role validation are mandatory.
 
-## SCIM
+## SCIM credentials
 
-Set tenant-bound credentials through `ODG_SCIM_TOKENS_JSON` using external secret management:
+`ODG_SCIM_TOKENS_JSON` maps each bearer token to a fixed tenant and optional subject:
 
 ```json
 {
-  "replace-with-tenant-a-secret": {
-    "tenant_id": "tenant-a",
-    "subject": "tenant-a-scim-client"
+  "replace-with-secret": {
+    "tenant_id": "example-tenant",
+    "subject": "identity-platform"
   }
 }
 ```
 
-SCIM requests send only `Authorization: Bearer <tenant-bound-secret>`. The application derives tenant context from the credential and never accepts caller-selected tenant context. `ODG_SCIM_BEARER_TOKEN` remains a single-tenant compatibility setting bound to `ODG_DEFAULT_TENANT`.
+SCIM never accepts tenant context from a header, path, or body. Store tokens in approved secret management and rotate them independently of API keys and OIDC credentials.
 
-Supported endpoints:
+## Resources and Bulk
 
-- `GET|POST /scim/v2/Users`
-- `GET|PUT|PATCH|DELETE /scim/v2/Users/{id}`
-- `GET|POST /scim/v2/Groups`
-- `GET|PUT|PATCH|DELETE /scim/v2/Groups/{id}`
+Supported resources:
 
-Filters support `userName`, `externalId`, or `displayName` equality. Payloads are limited to 64 KiB and password attributes are rejected. Rotate the SCIM token independently from API keys and OIDC signing keys.
+- `/scim/v2/Users`
+- `/scim/v2/Groups`
+- `/scim/v2/Bulk`
+
+Users and groups support list, equality filters, create, replace, patch, and delete semantics. Payloads are limited to 64 KiB and password attributes are rejected.
+
+Bulk requests are limited by `ODG_SCIM_BULK_MAX_OPERATIONS` and 1 MiB total size. Operations execute sequentially and return individual status values. `bulkId:` references can point to resources created earlier in the same request. `failOnErrors` stops processing after the requested error count; completed operations are not rolled back.
+
+## Deprovisioning
+
+Disabling a user through replace or patch, or deleting a user, creates a durable `identity.deprovision` workflow instead of hard-deleting the SCIM record. The worker:
+
+1. confirms the user is inactive;
+2. removes the user from tenant SCIM groups;
+3. records completion and the requesting identity;
+4. optionally emits `identity.deprovisioned` to subscribed integrations.
+
+`GET /api/v1/identity/deprovisioning` exposes workflow state to auditors. Downstream identity and application systems remain responsible for revoking their own access when they receive the event.

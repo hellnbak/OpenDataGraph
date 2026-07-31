@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import Principal, require_role
+from app.config import settings
 from app.database import get_db
 from app.models import (
     ConnectorSchedule,
@@ -37,12 +38,20 @@ from app.services.identity import (
     list_response,
     patch_resource,
     replace_resource,
+    request_deprovision,
     resource_response,
     scim_principal,
 )
-from app.services.schedules import configure_provider_budget, create_schedule
+from app.services.schedules import (
+    configure_provider_budget,
+    create_schedule,
+    next_cron_run,
+    skip_maintenance,
+    validate_schedule_definition,
+)
 from app.services.jobs import enqueue_job
 from app.services.integrations import create_endpoint, queue_integration_event
+from app.services.policy_governance import can_approve_bundle
 from app.services.policy_engine import validate_policy_definitions
 
 
@@ -69,6 +78,10 @@ def create_connector_schedule(
             payload,
             principal.subject,
             req.enabled,
+            req.schedule_type,
+            req.cron_expression,
+            req.timezone,
+            req.maintenance_windows,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -99,9 +112,44 @@ def update_connector_schedule(
     if not schedule:
         raise HTTPException(404, "Connector schedule not found")
     changes = req.model_dump(exclude_none=True)
+    maintenance_windows = changes.pop(
+        "maintenance_windows",
+        json.loads(schedule.maintenance_windows_json or "[]"),
+    )
+    if changes.get("schedule_type") == "interval":
+        changes["cron_expression"] = None
     for field, value in changes.items():
         setattr(schedule, field, value.replace(tzinfo=None) if field == "next_run_at" else value)
-    if req.enabled is True and req.next_run_at is None and schedule.next_run_at < utc_now():
+    try:
+        validate_schedule_definition(
+            schedule.schedule_type,
+            schedule.interval_seconds,
+            schedule.cron_expression,
+            schedule.timezone,
+            maintenance_windows,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    schedule.maintenance_windows_json = json.dumps(maintenance_windows)
+    cadence_fields = {
+        "schedule_type",
+        "interval_seconds",
+        "cron_expression",
+        "timezone",
+        "maintenance_windows",
+    }
+    if req.next_run_at is None and cadence_fields & req.model_fields_set:
+        schedule.next_run_at = (
+            next_cron_run(
+                schedule.cron_expression or "",
+                schedule.timezone,
+                utc_now(),
+                maintenance_windows,
+            )
+            if schedule.schedule_type == "cron"
+            else skip_maintenance(utc_now(), schedule.timezone, maintenance_windows)
+        )
+    elif req.enabled is True and req.next_run_at is None and schedule.next_run_at < utc_now():
         schedule.next_run_at = utc_now()
     schedule.updated_at = utc_now()
     db.commit()
@@ -194,6 +242,8 @@ def delete_evidence_record(
         raise HTTPException(404, "Evidence record not found")
     if record.deleted_at:
         return Response(status_code=204)
+    if settings.evidence_disposition_approval_required:
+        raise HTTPException(409, "Evidence deletion requires an approved disposition")
     if record.legal_hold:
         raise HTTPException(409, "Evidence under legal hold cannot be deleted")
     try:
@@ -288,13 +338,15 @@ def submit_policy_bundle(
 def approve_policy_bundle(
     bundle_id: str,
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_role("administrator")),
+    principal: Principal = Depends(require_role("data-owner")),
 ):
     bundle = _policy_bundle_for_tenant(db, bundle_id, principal.tenant_id)
     if not bundle:
         raise HTTPException(404, "Policy bundle not found")
     if bundle.status != "pending":
         raise HTTPException(409, "Only pending bundles can be approved")
+    if not can_approve_bundle(db, principal, bundle):
+        raise HTTPException(403, "Policy bundle approval is not delegated to this identity")
     if bundle.created_by == principal.subject and principal.subject != "development":
         raise HTTPException(409, "Policy approval requires a different identity")
     bundle.status = "approved"
@@ -609,8 +661,12 @@ def replace_scim_resource(
     )
     if not resource:
         raise HTTPException(404, "SCIM resource not found")
+    was_active = resource.active
     try:
-        return resource_response(replace_resource(db, resource, payload))
+        resource = replace_resource(db, resource, payload)
+        if resource.resource_type == "User" and was_active and not resource.active:
+            request_deprovision(db, resource, principal.subject)
+        return resource_response(resource)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -634,8 +690,12 @@ def patch_scim_resource(
     operations = payload.get("Operations")
     if not isinstance(operations, list):
         raise HTTPException(400, "SCIM patch requires an Operations array")
+    was_active = resource.active
     try:
-        return resource_response(patch_resource(db, resource, operations))
+        resource = patch_resource(db, resource, operations)
+        if resource.resource_type == "User" and was_active and not resource.active:
+            request_deprovision(db, resource, principal.subject)
+        return resource_response(resource)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -655,6 +715,9 @@ def delete_scim_resource(
     )
     if not resource:
         raise HTTPException(404, "SCIM resource not found")
+    if resource.resource_type == "User":
+        request_deprovision(db, resource, principal.subject)
+        return Response(status_code=204)
     db.delete(resource)
     db.commit()
     return Response(status_code=204)
@@ -677,7 +740,11 @@ def _schedule_response(schedule: ConnectorSchedule) -> dict:
         "tenant_id": schedule.tenant_id,
         "connector_type": schedule.connector_type,
         "account": schedule.account,
+        "schedule_type": schedule.schedule_type,
         "interval_seconds": schedule.interval_seconds,
+        "cron_expression": schedule.cron_expression,
+        "timezone": schedule.timezone,
+        "maintenance_windows": json.loads(schedule.maintenance_windows_json or "[]"),
         "enabled": schedule.enabled,
         "next_run_at": schedule.next_run_at,
         "last_enqueued_at": schedule.last_enqueued_at,
@@ -784,6 +851,13 @@ def _policy_exception_response(exception: PolicyException) -> dict:
         "approved_by": exception.approved_by,
         "created_at": exception.created_at,
         "revoked_at": exception.revoked_at,
+        "renewal_status": exception.renewal_status,
+        "renewal_requested_until": exception.renewal_requested_until,
+        "renewal_requested_by": exception.renewal_requested_by,
+        "renewal_requested_at": exception.renewal_requested_at,
+        "renewal_reason": exception.renewal_reason,
+        "renewed_by": exception.renewed_by,
+        "renewed_at": exception.renewed_at,
     }
 
 
@@ -826,6 +900,9 @@ def _integration_delivery_response(delivery: IntegrationDelivery) -> dict:
         "attempts": delivery.attempts,
         "response_code": delivery.response_code,
         "error": delivery.error,
+        "replayed_from": delivery.replayed_from,
+        "last_attempted_at": delivery.last_attempted_at,
+        "dead_lettered_at": delivery.dead_lettered_at,
         "created_at": delivery.created_at,
         "delivered_at": delivery.delivered_at,
     }

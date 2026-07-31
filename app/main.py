@@ -34,8 +34,11 @@ from .models import (
     ConnectorRun,
     DataAsset,
     DecisionAudit,
+    EvidenceDisposition,
     EvidenceRecord,
     GraphEdge,
+    IdentityDeprovisionWorkflow,
+    IntegrationDelivery,
     IntegrationEndpoint,
     LineageEvent,
     PolicyBundle,
@@ -66,6 +69,7 @@ from .schemas import (
     S3ScanRequest,
 )
 from .v13 import router as v13_router
+from .v14 import router as v14_router
 
 
 async def enrich_asset(asset: DataAsset, deterministic: bool = False) -> None:
@@ -124,6 +128,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifespan)
 configure_observability(app)
+app.include_router(v14_router)
 app.include_router(v13_router)
 BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
@@ -288,6 +293,33 @@ def summary(
             select(func.count(IntegrationEndpoint.id)).where(
                 IntegrationEndpoint.tenant_id == tenant_id,
                 IntegrationEndpoint.enabled.is_(True),
+            )
+        )
+        or 0,
+        "integration_deliveries": db.scalar(
+            select(func.count(IntegrationDelivery.id)).where(
+                IntegrationDelivery.tenant_id == tenant_id
+            )
+        )
+        or 0,
+        "dead_letter_deliveries": db.scalar(
+            select(func.count(IntegrationDelivery.id)).where(
+                IntegrationDelivery.tenant_id == tenant_id,
+                IntegrationDelivery.status == "dead-letter",
+            )
+        )
+        or 0,
+        "pending_evidence_dispositions": db.scalar(
+            select(func.count(EvidenceDisposition.id)).where(
+                EvidenceDisposition.tenant_id == tenant_id,
+                EvidenceDisposition.status == "pending",
+            )
+        )
+        or 0,
+        "identity_deprovisioning": db.scalar(
+            select(func.count(IdentityDeprovisionWorkflow.id)).where(
+                IdentityDeprovisionWorkflow.tenant_id == tenant_id,
+                IdentityDeprovisionWorkflow.status.in_(("pending", "running")),
             )
         )
         or 0,
@@ -1076,6 +1108,11 @@ def _evidence_response(record: EvidenceRecord) -> dict:
         "deleted_at": record.deleted_at,
         "deleted_by": record.deleted_by,
         "deletion_reason": record.deletion_reason,
+        "object_lock_status": record.object_lock_status,
+        "object_lock_mode": record.object_lock_mode,
+        "object_lock_retain_until": record.object_lock_retain_until,
+        "object_lock_legal_hold": record.object_lock_legal_hold,
+        "object_lock_verified_at": record.object_lock_verified_at,
         "created_by": record.created_by,
         "created_at": record.created_at,
     }

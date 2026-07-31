@@ -37,3 +37,12 @@
 - Policy change diffs, delegated approvers, and exception renewal workflows
 - Evidence object-lock verification and disposition approvals
 - Larger-estate graph indexing, path explanations, and export
+
+## v1.5 — Commercial readiness
+
+- Service accounts, credential rotation workflows, and identity lifecycle reporting
+- Policy and evidence governance notifications, review queues, and SLA metrics
+- Integration adapters for common security and governance event formats
+- Catalog ownership campaigns, attestations, and remediation tracking
+- Graph export jobs for very large estates and external analytics sinks
+- Upgrade compatibility matrix, performance benchmarks, and long-running soak tests

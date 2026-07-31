@@ -1,6 +1,9 @@
 import json
 import re
+import threading
+import time
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from fastapi import Depends, Header, HTTPException
 
@@ -8,6 +11,8 @@ from .config import settings
 
 
 ROLES = ["read-only", "auditor", "analyst", "connector-operator", "data-owner", "administrator"]
+_OIDC_DISCOVERY_CACHE: dict[str, tuple[float, dict]] = {}
+_OIDC_DISCOVERY_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -75,6 +80,7 @@ def _oidc_principal(token: str) -> Principal:
         provider = next((item for item in providers.values() if item.get("issuer") == issuer), None)
         if not provider:
             raise HTTPException(401, "OIDC issuer is not configured")
+        provider = _resolved_oidc_provider(provider)
         algorithms = provider.get("algorithms", ["RS256"])
         if not isinstance(algorithms, list) or not algorithms or any(
             algorithm not in {"RS256", "RS384", "RS512", "ES256", "ES384", "ES512"}
@@ -153,6 +159,68 @@ def _oidc_providers() -> dict[str, dict]:
     return providers
 
 
+def _resolved_oidc_provider(provider: dict) -> dict:
+    if provider.get("jwks_url"):
+        return provider
+    issuer = provider.get("issuer")
+    if not isinstance(issuer, str) or not issuer.startswith("https://"):
+        raise HTTPException(500, "OIDC provider issuer must use HTTPS")
+    discovery_url = provider.get("discovery_url") or (
+        f"{issuer.rstrip('/')}/.well-known/openid-configuration"
+    )
+    if not isinstance(discovery_url, str) or not discovery_url.startswith("https://"):
+        raise HTTPException(500, "OIDC provider discovery_url must use HTTPS")
+    if urlparse(discovery_url).hostname != urlparse(issuer).hostname:
+        raise HTTPException(500, "OIDC discovery host must match the configured issuer")
+    metadata = _load_oidc_discovery(discovery_url)
+    if metadata.get("issuer") != issuer:
+        raise HTTPException(500, "OIDC discovery issuer does not match configuration")
+    jwks_url = metadata.get("jwks_uri")
+    if not isinstance(jwks_url, str) or not jwks_url.startswith("https://"):
+        raise HTTPException(500, "OIDC discovery jwks_uri must use HTTPS")
+    allowed_hosts = {urlparse(issuer).hostname}
+    configured_hosts = provider.get("jwks_allowed_hosts", [])
+    if configured_hosts:
+        if not isinstance(configured_hosts, list) or any(
+            not isinstance(host, str) or not host for host in configured_hosts
+        ):
+            raise HTTPException(500, "OIDC provider jwks_allowed_hosts is invalid")
+        allowed_hosts.update(host.lower() for host in configured_hosts)
+    if (urlparse(jwks_url).hostname or "").lower() not in allowed_hosts:
+        raise HTTPException(500, "OIDC discovery jwks_uri host is not allowed")
+    return {**provider, "jwks_url": jwks_url}
+
+
+def _load_oidc_discovery(discovery_url: str) -> dict:
+    now = time.monotonic()
+    with _OIDC_DISCOVERY_LOCK:
+        cached = _OIDC_DISCOVERY_CACHE.get(discovery_url)
+        if cached and cached[0] > now:
+            return cached[1]
+    try:
+        import httpx
+
+        response = httpx.get(discovery_url, timeout=settings.oidc_http_timeout_seconds)
+        response.raise_for_status()
+        content = response.content
+        if len(content) > 65_536:
+            raise ValueError("OIDC discovery document exceeds 64 KiB")
+        metadata = response.json()
+    except Exception as exc:
+        raise HTTPException(503, "OIDC discovery could not be loaded") from exc
+    if not isinstance(metadata, dict):
+        raise HTTPException(500, "OIDC discovery document must be an object")
+    expires_at = now + max(60, settings.oidc_discovery_cache_seconds)
+    with _OIDC_DISCOVERY_LOCK:
+        _OIDC_DISCOVERY_CACHE[discovery_url] = (expires_at, metadata)
+    return metadata
+
+
+def clear_oidc_discovery_cache() -> None:
+    with _OIDC_DISCOVERY_LOCK:
+        _OIDC_DISCOVERY_CACHE.clear()
+
+
 def require_role(minimum_role: str):
     minimum = ROLES.index(minimum_role)
 
@@ -173,8 +241,10 @@ def oidc_configuration() -> dict:
                 "name": name,
                 "issuer": provider.get("issuer"),
                 "audience": provider.get("audience"),
+                "discovery": bool(provider.get("discovery_url") or not provider.get("jwks_url")),
             }
             for name, provider in providers.items()
         ],
         "validation": "signature-issuer-audience-expiry",
+        "discovery_cache_seconds": settings.oidc_discovery_cache_seconds,
     }

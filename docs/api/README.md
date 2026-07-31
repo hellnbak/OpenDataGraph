@@ -30,8 +30,13 @@ The `search` parameter uses OpenSearch when configured and database fallback oth
 - `POST /api/v1/policy/bundles/{bundle_id}/approve`
 - `POST /api/v1/policy/bundles/{bundle_id}/activate`
 - `POST /api/v1/policy/bundles/{bundle_id}/rollback`
+- `GET /api/v1/policy/bundles/{bundle_id}/diff`
+- `POST|GET /api/v1/policy/approver-delegations`
+- `DELETE /api/v1/policy/approver-delegations/{delegation_id}`
 - `POST|GET /api/v1/policy/exceptions`
 - `DELETE /api/v1/policy/exceptions/{exception_id}`
+- `POST /api/v1/policy/exceptions/{exception_id}/renewal`
+- `POST /api/v1/policy/exceptions/{exception_id}/renewal/approve`
 
 ## Connectors and jobs
 
@@ -63,6 +68,8 @@ Synchronous dynamic connector types are `github`, `gitlab`, and `sharepoint`. Qu
 - `GET /api/v1/graph/relationships`
 - `POST /api/v1/lineage/events`
 - `GET /api/v1/graph/query`
+- `GET /api/v1/graph/paths`
+- `GET /api/v1/graph/export`
 
 ## Evidence
 
@@ -72,6 +79,11 @@ Synchronous dynamic connector types are `github`, `gitlab`, and `sharepoint`. Qu
 - `PATCH /api/v1/evidence/{evidence_id}/governance`
 - `DELETE /api/v1/evidence/{evidence_id}`
 - `POST /api/v1/evidence/retention/jobs`
+- `POST /api/v1/evidence/{evidence_id}/verify-object-lock`
+- `POST /api/v1/evidence/{evidence_id}/dispositions`
+- `GET /api/v1/evidence/dispositions`
+- `POST /api/v1/evidence/dispositions/{disposition_id}/approve`
+- `POST /api/v1/evidence/dispositions/{disposition_id}/reject`
 
 ## Integrations
 
@@ -79,6 +91,8 @@ Synchronous dynamic connector types are `github`, `gitlab`, and `sharepoint`. Qu
 - `DELETE /api/v1/integrations/{endpoint_id}`
 - `POST /api/v1/integrations/{endpoint_id}/test`
 - `GET /api/v1/integrations/deliveries`
+- `GET /api/v1/integrations/dashboard`
+- `POST /api/v1/integrations/deliveries/{delivery_id}/replay`
 
 ## Authentication
 
@@ -86,4 +100,4 @@ Synchronous dynamic connector types are `github`, `gitlab`, and `sharepoint`. Qu
 
 When authentication is enabled, send a tenant-bound key in `X-API-Key` or a signed bearer token from a configured OIDC provider. Data-bearing APIs never accept tenant selection from the request.
 
-SCIM provisioning uses dedicated `/scim/v2/Users` and `/scim/v2/Groups` endpoints, a separate bearer token, and an operator-controlled tenant header.
+SCIM provisioning uses dedicated `/scim/v2/Users`, `/scim/v2/Groups`, and `/scim/v2/Bulk` endpoints with a separate tenant-bound bearer token. It never accepts a tenant header. Auditors inspect durable user offboarding through `GET /api/v1/identity/deprovisioning`.

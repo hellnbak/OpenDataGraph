@@ -5,7 +5,7 @@ from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, 
 from app.config import settings
 
 
-def test_initial_migration_creates_v13_schema(tmp_path, monkeypatch):
+def test_initial_migration_creates_v14_schema(tmp_path, monkeypatch):
     database = tmp_path / "migration.db"
     database_url = f"sqlite:///{database}"
     monkeypatch.setattr(settings, "database_url", database_url)
@@ -16,9 +16,12 @@ def test_initial_migration_creates_v13_schema(tmp_path, monkeypatch):
     assert {
         "background_jobs",
         "connector_schedules",
+        "evidence_dispositions",
         "evidence_records",
+        "identity_deprovision_workflows",
         "integration_endpoints",
         "lineage_events",
+        "policy_approver_delegations",
         "policy_bundles",
         "provider_rate_limits",
         "scim_resources",
@@ -31,7 +34,20 @@ def test_initial_migration_creates_v13_schema(tmp_path, monkeypatch):
         "deleted_at",
         "deleted_by",
         "deletion_reason",
+        "object_lock_status",
+        "object_lock_verified_at",
     } <= {column["name"] for column in inspector.get_columns("evidence_records")}
+    assert {
+        "schedule_type",
+        "cron_expression",
+        "timezone",
+        "maintenance_windows_json",
+    } <= {column["name"] for column in inspector.get_columns("connector_schedules")}
+    assert {
+        "ix_graph_edges_tenant_source",
+        "ix_graph_edges_tenant_target",
+        "ix_graph_edges_tenant_relationship",
+    } <= {index["name"] for index in inspector.get_indexes("graph_edges")}
 
 
 def test_migration_upgrades_v11_global_uniqueness(tmp_path, monkeypatch):

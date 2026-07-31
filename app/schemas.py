@@ -204,6 +204,11 @@ class EvidenceOut(BaseModel):
     deleted_at: datetime | None
     deleted_by: str | None
     deletion_reason: str | None
+    object_lock_status: str
+    object_lock_mode: str | None
+    object_lock_retain_until: datetime | None
+    object_lock_legal_hold: bool | None
+    object_lock_verified_at: datetime | None
     created_by: str
     created_at: datetime
 
@@ -211,7 +216,11 @@ class EvidenceOut(BaseModel):
 class ConnectorScheduleCreate(BaseModel):
     connector_type: str = Field(pattern="^(aws-s3|google-drive|github|gitlab|sharepoint)$")
     account: str = Field(min_length=1, max_length=240)
+    schedule_type: str = Field(default="interval", pattern="^(interval|cron)$")
     interval_seconds: int = Field(default=3600, ge=60, le=604800)
+    cron_expression: str | None = Field(default=None, min_length=9, max_length=120)
+    timezone: str = Field(default="UTC", min_length=1, max_length=120)
+    maintenance_windows: list[dict] = Field(default_factory=list, max_length=20)
     enabled: bool = True
     secret_ref: str | None = Field(default=None, pattern=r"^(env|file):.+$")
     cursor: str | None = None
@@ -226,7 +235,11 @@ class ConnectorScheduleCreate(BaseModel):
 
 class ConnectorScheduleUpdate(BaseModel):
     enabled: bool | None = None
+    schedule_type: str | None = Field(default=None, pattern="^(interval|cron)$")
     interval_seconds: int | None = Field(default=None, ge=60, le=604800)
+    cron_expression: str | None = Field(default=None, min_length=9, max_length=120)
+    timezone: str | None = Field(default=None, min_length=1, max_length=120)
+    maintenance_windows: list[dict] | None = Field(default=None, max_length=20)
     next_run_at: datetime | None = None
 
 
@@ -258,6 +271,28 @@ class PolicyExceptionCreate(BaseModel):
     reason: str = Field(min_length=3, max_length=2000)
     controls: list[str] = Field(default_factory=list, max_length=50)
     expires_at: datetime
+
+
+class PolicyApproverDelegationCreate(BaseModel):
+    subject: str = Field(min_length=1, max_length=320)
+    bundle_name: str | None = Field(default=None, min_length=1, max_length=160)
+    can_approve_bundles: bool = True
+    can_approve_exceptions: bool = False
+    expires_at: datetime
+
+
+class PolicyExceptionRenewalRequest(BaseModel):
+    expires_at: datetime
+    reason: str = Field(min_length=3, max_length=2000)
+
+
+class EvidenceDispositionCreate(BaseModel):
+    reason: str = Field(min_length=3, max_length=2000)
+    action: str = Field(default="delete", pattern="^delete$")
+
+
+class IntegrationReplayRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=1000)
 
 
 class IntegrationEndpointCreate(BaseModel):

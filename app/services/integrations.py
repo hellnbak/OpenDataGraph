@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import IntegrationDelivery, IntegrationEndpoint, utc_now
+from app.models import BackgroundJob, IntegrationDelivery, IntegrationEndpoint, utc_now
 from app.services.connectors import safe_connector_error
 from connectors.security import validate_https_url
 
@@ -125,6 +125,7 @@ def deliver_integration(db: Session, tenant_id: str, delivery_id: str) -> dict:
         digest = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
         headers["X-OpenDataGraph-Signature"] = f"sha256={digest}"
     delivery.attempts += 1
+    delivery.last_attempted_at = utc_now()
     db.commit()
     try:
         response = httpx.post(
@@ -143,6 +144,7 @@ def deliver_integration(db: Session, tenant_id: str, delivery_id: str) -> dict:
     delivery.status = "delivered"
     delivery.response_code = response.status_code
     delivery.error = None
+    delivery.dead_lettered_at = None
     delivery.delivered_at = utc_now()
     db.commit()
     return {
@@ -151,4 +153,131 @@ def deliver_integration(db: Session, tenant_id: str, delivery_id: str) -> dict:
         "status": delivery.status,
         "response_code": delivery.response_code,
         "mode": endpoint.mode,
+    }
+
+
+def mark_delivery_dead_letter(
+    db: Session,
+    tenant_id: str,
+    delivery_id: str,
+    error: str,
+) -> IntegrationDelivery:
+    delivery = db.scalar(
+        select(IntegrationDelivery).where(
+            IntegrationDelivery.tenant_id == tenant_id,
+            IntegrationDelivery.delivery_id == delivery_id,
+        )
+    )
+    if not delivery:
+        raise ValueError("Integration delivery not found")
+    delivery.status = "dead-letter"
+    delivery.error = error
+    delivery.dead_lettered_at = utc_now()
+    return delivery
+
+
+def replay_delivery(
+    db: Session,
+    tenant_id: str,
+    delivery_id: str,
+    requested_by: str,
+    reason: str,
+) -> IntegrationDelivery:
+    from app.services.jobs import enqueue_job
+
+    original = db.scalar(
+        select(IntegrationDelivery).where(
+            IntegrationDelivery.tenant_id == tenant_id,
+            IntegrationDelivery.delivery_id == delivery_id,
+        )
+    )
+    if not original:
+        raise ValueError("Integration delivery not found")
+    if original.status not in {"failed", "dead-letter"}:
+        raise ValueError("Only failed or dead-letter deliveries can be replayed")
+    active_job = db.scalar(
+        select(BackgroundJob).where(
+            BackgroundJob.tenant_id == tenant_id,
+            BackgroundJob.job_type == "integration.deliver",
+            BackgroundJob.status.in_(("pending", "running")),
+            BackgroundJob.payload_json == json.dumps({"delivery_id": delivery_id}),
+        )
+    )
+    if active_job:
+        raise ValueError("Integration delivery is still being attempted")
+    endpoint = db.scalar(
+        select(IntegrationEndpoint).where(
+            IntegrationEndpoint.tenant_id == tenant_id,
+            IntegrationEndpoint.endpoint_id == original.endpoint_id,
+            IntegrationEndpoint.enabled.is_(True),
+        )
+    )
+    if not endpoint:
+        raise ValueError("Integration endpoint is missing or disabled")
+    payload = json.loads(original.payload_json)
+    replay_metadata = payload.setdefault("_opendatagraph", {})
+    if isinstance(replay_metadata, dict):
+        replay_metadata.update(
+            {
+                "replayed_from": original.delivery_id,
+                "replay_reason": reason,
+                "replayed_by": requested_by,
+            }
+        )
+    delivery = IntegrationDelivery(
+        tenant_id=tenant_id,
+        delivery_id=str(uuid4()),
+        endpoint_id=original.endpoint_id,
+        event_type=original.event_type,
+        payload_json=json.dumps(payload),
+        replayed_from=original.delivery_id,
+    )
+    db.add(delivery)
+    db.commit()
+    db.refresh(delivery)
+    enqueue_job(
+        db,
+        tenant_id=tenant_id,
+        job_type="integration.deliver",
+        payload={"delivery_id": delivery.delivery_id},
+        created_by=requested_by,
+        max_attempts=5,
+    )
+    return delivery
+
+
+def delivery_dashboard(db: Session, tenant_id: str) -> dict:
+    deliveries = list(
+        db.scalars(
+            select(IntegrationDelivery).where(IntegrationDelivery.tenant_id == tenant_id)
+        ).all()
+    )
+    statuses: dict[str, int] = {}
+    endpoints: dict[str, dict] = {}
+    for delivery in deliveries:
+        statuses[delivery.status] = statuses.get(delivery.status, 0) + 1
+        endpoint = endpoints.setdefault(
+            delivery.endpoint_id,
+            {
+                "endpoint_id": delivery.endpoint_id,
+                "total": 0,
+                "delivered": 0,
+                "failed": 0,
+                "dead_letter": 0,
+            },
+        )
+        endpoint["total"] += 1
+        if delivery.status == "delivered":
+            endpoint["delivered"] += 1
+        elif delivery.status == "dead-letter":
+            endpoint["dead_letter"] += 1
+        elif delivery.status == "failed":
+            endpoint["failed"] += 1
+    delivered = statuses.get("delivered", 0)
+    total = len(deliveries)
+    return {
+        "total": total,
+        "statuses": statuses,
+        "success_rate": round(delivered / total, 4) if total else 1.0,
+        "endpoints": sorted(endpoints.values(), key=lambda item: item["endpoint_id"]),
     }

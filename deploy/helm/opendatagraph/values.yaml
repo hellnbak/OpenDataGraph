@@ -2,7 +2,7 @@ replicaCount: 2
 
 image:
   repository: opendatagraph
-  tag: "1.3.0"
+  tag: "1.4.0"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -58,9 +58,14 @@ config:
   sharepointAllowedHosts: graph.microsoft.com
   integrationAllowedHosts: ""
   integrationTimeoutSeconds: "10"
+  oidcDiscoveryCacheSeconds: "3600"
+  oidcHttpTimeoutSeconds: "5"
+  scimBulkMaxOperations: "100"
   evidenceDefaultRetentionDays: "365"
+  evidenceDispositionApprovalRequired: "true"
   workerScheduleBatchSize: "50"
   graphMaxDepth: "5"
+  graphMaxExportEdges: "10000"
   logFormat: json
   metricsEnabled: "true"
   workerPollSeconds: "2"

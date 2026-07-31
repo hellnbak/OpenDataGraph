@@ -157,6 +157,140 @@ def query_graph(
     }
 
 
+def explain_paths(
+    db: Session,
+    tenant_id: str,
+    source_type: str,
+    source_id: str,
+    target_type: str,
+    target_id: str,
+    max_depth: int,
+    direction: str = "outbound",
+    max_paths: int = 10,
+) -> dict:
+    bounded_depth = min(max_depth, settings.graph_max_depth)
+    source = (source_type, source_id)
+    target = (target_type, target_id)
+    queue: list[tuple[tuple[str, str], list[GraphEdge], set[tuple[str, str]]]] = [
+        (source, [], {source})
+    ]
+    paths: list[dict] = []
+    while queue and len(paths) < max_paths:
+        node, path, visited = queue.pop(0)
+        if len(path) >= bounded_depth:
+            continue
+        conditions = []
+        if direction in {"outbound", "both"}:
+            conditions.append(
+                and_(GraphEdge.source_type == node[0], GraphEdge.source_id == node[1])
+            )
+        if direction in {"inbound", "both"}:
+            conditions.append(
+                and_(GraphEdge.target_type == node[0], GraphEdge.target_id == node[1])
+            )
+        edges = db.scalars(
+            select(GraphEdge)
+            .where(GraphEdge.tenant_id == tenant_id, or_(*conditions))
+            .order_by(GraphEdge.id)
+            .limit(1000)
+        )
+        for edge in edges:
+            if (edge.source_type, edge.source_id) == node:
+                next_node = (edge.target_type, edge.target_id)
+            else:
+                next_node = (edge.source_type, edge.source_id)
+            if next_node in visited:
+                continue
+            next_path = [*path, edge]
+            if next_node == target:
+                paths.append(_path_response(source, next_path, direction))
+                if len(paths) >= max_paths:
+                    break
+            else:
+                queue.append((next_node, next_path, {*visited, next_node}))
+    return {
+        "source": {"type": source_type, "id": source_id},
+        "target": {"type": target_type, "id": target_id},
+        "direction": direction,
+        "max_depth": bounded_depth,
+        "paths": paths,
+        "found": bool(paths),
+        "truncated": len(paths) >= max_paths,
+    }
+
+
+def export_graph_edges(
+    db: Session,
+    tenant_id: str,
+    relationships: set[str],
+    limit: int,
+) -> dict:
+    bounded_limit = min(limit, settings.graph_max_export_edges)
+    statement = select(GraphEdge).where(GraphEdge.tenant_id == tenant_id)
+    if relationships:
+        statement = statement.where(GraphEdge.relationship.in_(relationships))
+    statement = statement.order_by(GraphEdge.id).limit(bounded_limit + 1)
+    rows = list(db.scalars(statement).all())
+    truncated = len(rows) > bounded_limit
+    rows = rows[:bounded_limit]
+    return {
+        "tenant_id": tenant_id,
+        "edges": [_edge_response(edge) for edge in rows],
+        "count": len(rows),
+        "truncated": truncated,
+    }
+
+
+def _path_response(
+    source: tuple[str, str],
+    path: list[GraphEdge],
+    direction: str,
+) -> dict:
+    current = source
+    steps = []
+    for edge in path:
+        edge_source = (edge.source_type, edge.source_id)
+        edge_target = (edge.target_type, edge.target_id)
+        if current == edge_source:
+            next_node = edge_target
+            explanation = (
+                f"{edge.source_type} {edge.source_id} {edge.relationship} "
+                f"{edge.target_type} {edge.target_id}"
+            )
+        else:
+            next_node = edge_source
+            explanation = (
+                f"{edge.target_type} {edge.target_id} is reached through inbound "
+                f"{edge.relationship} from {edge.source_type} {edge.source_id}"
+            )
+        steps.append(
+            {
+                "edge": _edge_response(edge),
+                "from": {"type": current[0], "id": current[1]},
+                "to": {"type": next_node[0], "id": next_node[1]},
+                "explanation": explanation,
+            }
+        )
+        current = next_node
+    return {
+        "length": len(path),
+        "direction": direction,
+        "steps": steps,
+        "explanation": " → ".join(step["explanation"] for step in steps),
+    }
+
+
+def _edge_response(edge: GraphEdge) -> dict:
+    return {
+        "id": edge.id,
+        "source": {"type": edge.source_type, "id": edge.source_id},
+        "relationship": edge.relationship,
+        "target": {"type": edge.target_type, "id": edge.target_id},
+        "metadata": json.loads(edge.metadata_json or "{}"),
+        "created_at": edge.created_at,
+    }
+
+
 def _ensure_edge(
     db: Session,
     tenant_id: str,
