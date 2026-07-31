@@ -1,0 +1,15 @@
+{
+  "application_replicas": 2,
+  "database": {
+    "connections": 40,
+    "engine": "PostgreSQL",
+    "storage": "general-purpose SSD"
+  },
+  "name": "postgres-small-reference",
+  "profile": {
+    "assets": 100000,
+    "edges": 250000
+  },
+  "purpose": "Comparative release qualification",
+  "worker_replicas": 2
+}

@@ -54,9 +54,43 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- if .Values.workloadIdentityToken.enabled }}
+            - name: workload-identity-token
+              mountPath: {{ .Values.workloadIdentityToken.mountDirectory | quote }}
+              readOnly: true
+            {{- end }}
+            {{- range .Values.workloadIdentityTokens }}
+            - name: workload-identity-token-{{ .name }}
+              mountPath: {{ .mountDirectory | quote }}
+              readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- if .Values.workloadIdentityToken.enabled }}
+        - name: workload-identity-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: {{ .Values.workloadIdentityToken.fileName | quote }}
+                  audience: {{ .Values.workloadIdentityToken.audience | quote }}
+                  expirationSeconds: {{ .Values.workloadIdentityToken.expirationSeconds }}
+        {{- end }}
+        {{- range .Values.workloadIdentityTokens }}
+        - name: workload-identity-token-{{ .name }}
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: {{ .fileName | quote }}
+                  audience: {{ .audience | quote }}
+                  expirationSeconds: {{ default 3600 .expirationSeconds }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       nodeSelector:
         {{- toYaml .Values.nodeSelector | nindent 8 }}
       tolerations:

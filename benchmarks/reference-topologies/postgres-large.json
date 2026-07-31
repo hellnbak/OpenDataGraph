@@ -1,0 +1,15 @@
+{
+  "application_replicas": 4,
+  "database": {
+    "connections": 100,
+    "engine": "PostgreSQL",
+    "storage": "provisioned-performance SSD"
+  },
+  "name": "postgres-large-reference",
+  "profile": {
+    "assets": 500000,
+    "edges": 1500000
+  },
+  "purpose": "Comparative larger-estate qualification",
+  "worker_replicas": 4
+}

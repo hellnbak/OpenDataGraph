@@ -5,7 +5,7 @@ from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, 
 from app.config import settings
 
 
-def test_initial_migration_creates_v16_schema(tmp_path, monkeypatch):
+def test_initial_migration_creates_v17_schema(tmp_path, monkeypatch):
     database = tmp_path / "migration.db"
     database_url = f"sqlite:///{database}"
     monkeypatch.setattr(settings, "database_url", database_url)
@@ -27,6 +27,9 @@ def test_initial_migration_creates_v16_schema(tmp_path, monkeypatch):
         "ownership_assignments",
         "ownership_campaigns",
         "ownership_campaign_schedules",
+        "ownership_escalation_events",
+        "ownership_escalation_policies",
+        "connector_capability_policies",
         "policy_approver_delegations",
         "policy_bundles",
         "provider_rate_limits",
@@ -77,6 +80,17 @@ def test_initial_migration_creates_v16_schema(tmp_path, monkeypatch):
     }
     assert "ix_governance_review_tasks_tenant_status_due" in {
         index["name"] for index in inspector.get_indexes("governance_review_tasks")
+    }
+    assert {
+        "signing_profile",
+        "signature_type",
+        "signature_key_id",
+    } <= {
+        column["name"]
+        for column in inspector.get_columns("governance_evidence_packages")
+    }
+    assert "escalation_policy_id" in {
+        column["name"] for column in inspector.get_columns("ownership_campaigns")
     }
 
 
@@ -266,4 +280,29 @@ def test_v16_migration_upgrades_v15_schema(tmp_path, monkeypatch):
     }
     assert "ix_graph_exports_tenant_status_created" in {
         index["name"] for index in inspector.get_indexes("graph_exports")
+    }
+
+
+def test_v17_migration_upgrades_v16_schema(tmp_path, monkeypatch):
+    database = tmp_path / "v16.db"
+    database_url = f"sqlite:///{database}"
+    engine = create_engine(database_url)
+    monkeypatch.setattr(settings, "database_url", database_url)
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", database_url)
+    command.upgrade(config, "20260731_0005")
+    command.upgrade(config, "head")
+    inspector = inspect(engine)
+    assert {
+        "connector_capability_policies",
+        "ownership_escalation_events",
+        "ownership_escalation_policies",
+    } <= set(inspector.get_table_names())
+    assert {
+        "connector_version",
+        "capability_digest",
+        "capability_policy_version",
+    } <= {column["name"] for column in inspector.get_columns("connector_runs")}
+    assert "idempotency_key" in {
+        column["name"] for column in inspector.get_columns("integration_deliveries")
     }

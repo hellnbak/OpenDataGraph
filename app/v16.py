@@ -28,6 +28,7 @@ from app.services.export_sinks import export_sink_schemes
 from app.services.ownership import (
     campaign_schedule_response,
     create_campaign_schedule,
+    validate_escalation_policy,
     validate_campaign_schedule_endpoints,
     validate_ownership_scope,
 )
@@ -64,6 +65,7 @@ def create_ownership_schedule(
             req.notification_endpoint_ids,
             req.enabled,
             principal.subject,
+            req.escalation_policy_id,
         )
     except IntegrityError as exc:
         db.rollback()
@@ -120,6 +122,12 @@ def update_ownership_schedule(
             principal.tenant_id,
             endpoint_ids,
         )
+        if "escalation_policy_id" in changes:
+            changes["escalation_policy_id"] = validate_escalation_policy(
+                db,
+                principal.tenant_id,
+                changes["escalation_policy_id"],
+            )
         if changes.get("schedule_type") == "interval":
             changes["cron_expression"] = None
         for field, value in changes.items():
@@ -204,6 +212,7 @@ def create_governance_evidence_package(
             req.categories,
             req.max_records,
             principal.subject,
+            req.signing_profile,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -282,6 +291,19 @@ def graph_export_sink_configuration(
         "https_allowlisted_hosts": len(settings.graph_export_https_allowed_hosts),
         "https_workload_identity_configured": bool(
             settings.graph_export_https_identity_token_file
+        ),
+        "s3_exchange_profile_configured": bool(
+            settings.graph_export_s3_exchange_profile
+        ),
+        "gcs_allowlisted_buckets": len(
+            settings.graph_export_gcs_allowed_sink_buckets
+        ),
+        "gcs_exchange_profile_configured": bool(
+            settings.graph_export_gcs_exchange_profile
+        ),
+        "azure_allowlisted_sinks": len(settings.graph_export_azure_allowed_sinks),
+        "azure_exchange_profile_configured": bool(
+            settings.graph_export_azure_exchange_profile
         ),
     }
 

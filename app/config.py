@@ -40,6 +40,13 @@ class Settings:
         "ODG_WORKLOAD_IDENTITY_MAX_TOKEN_SECONDS",
         3600,
     )
+    workload_exchange_profiles_json = os.getenv(
+        "ODG_WORKLOAD_EXCHANGE_PROFILES_JSON",
+        "{}",
+    )
+    workload_exchange_http_timeout_seconds = float(
+        os.getenv("ODG_WORKLOAD_EXCHANGE_HTTP_TIMEOUT_SECONDS", "10")
+    )
     oidc_discovery_cache_seconds = _integer("ODG_OIDC_DISCOVERY_CACHE_SECONDS", 3600)
     oidc_http_timeout_seconds = float(os.getenv("ODG_OIDC_HTTP_TIMEOUT_SECONDS", "5"))
     scim_bearer_token = os.getenv("ODG_SCIM_BEARER_TOKEN", "")
@@ -88,6 +95,15 @@ class Settings:
         for item in os.getenv("ODG_SHAREPOINT_ALLOWED_HOSTS", "graph.microsoft.com").split(",")
         if item.strip()
     )
+    connector_plugin_allowlist = tuple(
+        item.strip()
+        for item in os.getenv("ODG_CONNECTOR_PLUGIN_ALLOWLIST", "").split(",")
+        if item.strip()
+    )
+    connector_capability_policy_json = os.getenv(
+        "ODG_CONNECTOR_CAPABILITY_POLICY_JSON",
+        "{}",
+    )
     integration_allowed_hosts = tuple(
         item.strip().lower()
         for item in os.getenv("ODG_INTEGRATION_ALLOWED_HOSTS", "").split(",")
@@ -126,6 +142,28 @@ class Settings:
     graph_export_https_timeout_seconds = float(
         os.getenv("ODG_GRAPH_EXPORT_HTTPS_TIMEOUT_SECONDS", "30")
     )
+    graph_export_s3_exchange_profile = os.getenv(
+        "ODG_GRAPH_EXPORT_S3_EXCHANGE_PROFILE",
+        "",
+    )
+    graph_export_gcs_allowed_sink_buckets = tuple(
+        item.strip()
+        for item in os.getenv("ODG_GRAPH_EXPORT_GCS_ALLOWED_SINK_BUCKETS", "").split(",")
+        if item.strip()
+    )
+    graph_export_gcs_exchange_profile = os.getenv(
+        "ODG_GRAPH_EXPORT_GCS_EXCHANGE_PROFILE",
+        "",
+    )
+    graph_export_azure_allowed_sinks = tuple(
+        item.strip().lower()
+        for item in os.getenv("ODG_GRAPH_EXPORT_AZURE_ALLOWED_SINKS", "").split(",")
+        if item.strip()
+    )
+    graph_export_azure_exchange_profile = os.getenv(
+        "ODG_GRAPH_EXPORT_AZURE_EXCHANGE_PROFILE",
+        "",
+    )
     governance_default_sla_hours = _integer("ODG_GOVERNANCE_DEFAULT_SLA_HOURS", 48)
     governance_due_soon_hours = _integer("ODG_GOVERNANCE_DUE_SOON_HOURS", 24)
     governance_package_backend = os.getenv("ODG_GOVERNANCE_PACKAGE_BACKEND", "local").lower()
@@ -146,6 +184,24 @@ class Settings:
         "ODG_GOVERNANCE_PACKAGE_MAX_BYTES",
         100 * 1024 * 1024,
     )
+    governance_package_signing_profiles_json = os.getenv(
+        "ODG_GOVERNANCE_PACKAGE_SIGNING_PROFILES_JSON",
+        "{}",
+    )
+    governance_package_verification_profiles_json = os.getenv(
+        "ODG_GOVERNANCE_PACKAGE_VERIFICATION_PROFILES_JSON",
+        "{}",
+    )
+    governance_package_default_signing_profile = os.getenv(
+        "ODG_GOVERNANCE_PACKAGE_DEFAULT_SIGNING_PROFILE",
+        "",
+    )
+    governance_package_signing_required = _boolean(
+        "ODG_GOVERNANCE_PACKAGE_SIGNING_REQUIRED",
+        False,
+    )
+    cosign_executable = os.getenv("ODG_COSIGN_EXECUTABLE", "cosign")
+    cosign_timeout_seconds = float(os.getenv("ODG_COSIGN_TIMEOUT_SECONDS", "60"))
     log_level = os.getenv("ODG_LOG_LEVEL", "INFO").upper()
     log_format = os.getenv("ODG_LOG_FORMAT", "json").lower()
     metrics_enabled = _boolean("ODG_METRICS_ENABLED", True)

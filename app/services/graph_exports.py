@@ -301,6 +301,10 @@ def _s3_client():
         kwargs["endpoint_url"] = settings.graph_export_endpoint_url
     if settings.graph_export_region:
         kwargs["region_name"] = settings.graph_export_region
+    if settings.graph_export_s3_exchange_profile:
+        from app.services.workload_exchange import boto_credentials
+
+        kwargs.update(boto_credentials(settings.graph_export_s3_exchange_profile))
     return boto3.client("s3", **kwargs)
 
 

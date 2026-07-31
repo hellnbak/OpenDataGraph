@@ -1,6 +1,6 @@
 # Governance Analytics and Evidence Packages
 
-OpenDataGraph v1.6 provides tenant-scoped governance posture analytics and asynchronous metadata-only evidence packages.
+OpenDataGraph v1.7 provides tenant-scoped governance posture analytics and asynchronous metadata-only evidence packages with optional cryptographic signing and independent trust verification.
 
 ## Analytics
 
@@ -25,7 +25,7 @@ The window is bounded from 1 through 366 days. Current open and overdue posture 
 - `service-accounts`
 - `graph-exports`
 
-An empty category list includes every category. Packages include a versioned manifest, analytics snapshot, bounded records, record count, and truncation state.
+An empty category list includes every category. Packages include a versioned canonical manifest, analytics snapshot, bounded records, record count, truncation state, payload digest, and per-section digests. A request may select a named signing profile.
 
 Packages intentionally exclude evidence object bytes, filenames and storage locations, policy definitions, review detail payloads, ownership identities, connector secrets, API credentials, prompts, responses, and source-system content.
 
@@ -43,11 +43,15 @@ Configure local or S3-compatible storage with:
 
 Workers record SHA-256 and byte size. Downloads verify the digest before returning content. Local storage is suitable only for controlled single-node evaluation; shared deployments should use private encrypted object storage with workload identity, versioning, retention, and tested restore procedures.
 
+Package format version 2 can use Ed25519, AWS KMS, or Sigstore assurance. `ODG_GOVERNANCE_PACKAGE_SIGNING_REQUIRED` can require a selected default or request profile. Verification reports payload validity, signature validity, and configured signer trust separately. See [Governance evidence signing](EVIDENCE_SIGNING.md).
+
 ## APIs
 
 - `GET /api/v1/governance/analytics`
 - `POST|GET /api/v1/governance/evidence-packages`
 - `GET /api/v1/governance/evidence-packages/{package_id}`
 - `GET /api/v1/governance/evidence-packages/{package_id}/download`
+- `GET /api/v1/governance/evidence-signing`
+- `POST /api/v1/governance/evidence-packages/{package_id}/verify`
 
 Completed packages can emit `governance.evidence-package.completed` through subscribed integration endpoints.

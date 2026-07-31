@@ -2,6 +2,7 @@ import argparse
 import json
 import statistics
 import time
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from sqlalchemy import create_engine, delete, select
@@ -10,6 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from app.database import Base
 from app.models import DataAsset, GraphEdge
 from app.services.graph import query_graph
+from app.version import VERSION
 
 
 BENCHMARK_PROFILES = {
@@ -80,6 +82,10 @@ def run_benchmark(
                 db.execute(delete(DataAsset).where(DataAsset.tenant_id == tenant_id))
                 db.commit()
     return {
+        "format": "opendatagraph-benchmark",
+        "version": 1,
+        "application_version": VERSION,
+        "captured_at": datetime.now(UTC).isoformat(),
         "profile": {
             "name": profile_name,
             "database": "postgresql" if database_url else "sqlite-memory",

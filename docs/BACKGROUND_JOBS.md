@@ -1,6 +1,6 @@
 # Background Jobs
 
-OpenDataGraph v1.6 stores durable jobs in the primary database and executes them with `python -m app.worker`.
+OpenDataGraph v1.7 stores durable jobs in the primary database and executes them with `python -m app.worker`.
 
 ## Supported jobs
 
@@ -23,13 +23,13 @@ POST /api/v1/connectors/{connector_type}/jobs
 
 Supported queued connector types are `aws-s3`, `google-drive`, `github`, `gitlab`, `sharepoint`, and `postgresql`.
 
-Workers also claim due interval or cron connector and ownership schedules before selecting the next pending job. See [Scheduling and provider budgets](SCHEDULING_AND_RATE_LIMITS.md).
+Workers also claim due interval or cron connector and ownership schedules and due ownership escalation stages before selecting the next pending job. Escalation stages queue ordinary idempotent `integration.deliver` jobs. See [Scheduling and provider budgets](SCHEDULING_AND_RATE_LIMITS.md).
 
 ## Credentials
 
 Job payloads reject inline token, password, authorization, credential, and secret fields. Use `env:VARIABLE_NAME` or `file:/run/secrets/name`.
 
-The file must be within `ODG_SECRET_FILE_ROOTS`. The worker resolves the value only when the job executes. AWS S3 uses the standard boto3 credential chain and does not require `secret_ref`.
+The file must be within `ODG_SECRET_FILE_ROOTS`. The worker resolves the value only when the job executes. AWS S3 uses the standard boto3 credential chain by default and can instead use a named temporary workload exchange profile.
 
 ## Lifecycle
 

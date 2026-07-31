@@ -1,8 +1,10 @@
 # Connectors
 
-OpenDataGraph v1.6 includes metadata-first adapters for AWS S3, Google Drive, GitHub, GitLab, SharePoint / OneDrive, and PostgreSQL catalogs.
+OpenDataGraph v1.7 includes metadata-first adapters for AWS S3, Google Drive, GitHub, GitLab, SharePoint / OneDrive, and PostgreSQL catalogs.
 
-All connectors normalize source records before tenant-scoped catalog ingestion. Runs record source, account, status, imported and updated counts, safe errors, timestamps, and opaque cursor progression.
+All connectors normalize source records before tenant-scoped catalog ingestion. Runs record source, account, connector version, capability manifest digest, policy version, status, imported and updated counts, safe errors, timestamps, and opaque cursor progression.
+
+The central registry supports built-in connectors and administrator-allowlisted Python entry-point plugins. Versioned manifests declare permissions, egress, content access, cursor behavior, rate-limit behavior, timestamp provenance, public-access interpretation, and destructive actions. Deployment and tenant capability policies are enforced before execution. See [Connector conformance and capability policy](CONNECTOR_CONFORMANCE.md).
 
 ## Execution modes
 

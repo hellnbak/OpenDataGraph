@@ -1,9 +1,6 @@
 import asyncio
 import json
-import os
-import re
 from datetime import datetime, timedelta
-from pathlib import Path
 from uuid import uuid4
 
 from sqlalchemy import select, update
@@ -12,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models import BackgroundJob, utc_now
 from app.observability import JOBS
+from app.secrets import resolve_secret as resolve_secret
 from app.services.connectors import ingest_connector, safe_connector_error
 from app.services.evidence import (
     execute_disposition,
@@ -27,15 +25,14 @@ from app.services.graph_exports import execute_graph_export, mark_graph_export_e
 from app.services.identity import execute_deprovision, mark_deprovision_error
 from app.services.integrations import deliver_integration, mark_delivery_dead_letter
 from app.services.ownership import execute_scheduled_campaign
-from app.services.schedules import ProviderRateLimitExceeded, provider_request_guard
+from app.services.schedules import ProviderRateLimitExceeded
 from app.services.search import reindex_tenant
-from connectors.gdrive import GoogleDriveConnector
-from connectors.github import GitHubConnector
-from connectors.gitlab import GitLabConnector
-from connectors.postgresql import PostgreSQLConnector
-from connectors.s3 import S3Connector
-from connectors.security import validate_https_url
-from connectors.sharepoint import SharePointConnector
+from connectors.registry import (
+    build_connector,
+    connector_manifests,
+    connector_registration,
+    enforce_connector_policy,
+)
 
 
 SUPPORTED_JOB_TYPES = {
@@ -50,14 +47,7 @@ SUPPORTED_JOB_TYPES = {
     "ownership.campaign.launch",
     "governance.evidence-package",
 }
-SUPPORTED_CONNECTORS = {
-    "aws-s3",
-    "google-drive",
-    "github",
-    "gitlab",
-    "sharepoint",
-    "postgresql",
-}
+SUPPORTED_CONNECTORS = {manifest.connector_type for manifest in connector_manifests()}
 
 
 def enqueue_job(
@@ -71,6 +61,9 @@ def enqueue_job(
     if job_type not in SUPPORTED_JOB_TYPES:
         raise ValueError(f"Unsupported job type: {job_type}")
     validate_job_payload(job_type, payload)
+    if job_type == "connector.scan":
+        registration = connector_registration(payload["connector_type"])
+        enforce_connector_policy(db, tenant_id, registration.manifest)
     job = BackgroundJob(
         tenant_id=tenant_id,
         job_id=str(uuid4()),
@@ -121,7 +114,7 @@ def execute_job(db: Session, job: BackgroundJob) -> None:
     try:
         payload = json.loads(job.payload_json)
         if job.job_type == "connector.scan":
-            connector = _build_connector(payload, db, job.tenant_id)
+            connector, _manifest, _decision = build_connector(payload, db, job.tenant_id)
             result = asyncio.run(
                 ingest_connector(
                     db,
@@ -310,39 +303,22 @@ def validate_job_payload(job_type: str, payload: dict) -> None:
         raise ValueError("Job payload exceeds 16 KiB")
     if job_type == "connector.scan":
         connector_type = payload.get("connector_type")
-        if connector_type not in SUPPORTED_CONNECTORS:
-            raise ValueError(f"Unsupported connector type: {connector_type}")
+        registration = connector_registration(connector_type)
+        enforce_connector_policy(None, None, registration.manifest)
         forbidden = {"token", "password", "secret", "authorization", "credentials"}
         if forbidden & {key.lower() for key in payload}:
             raise ValueError("Connector credentials must be supplied by secret_ref")
         secret_ref = payload.get("secret_ref")
-        if connector_type not in {"aws-s3"} and not secret_ref:
+        if connector_type in {
+            "google-drive",
+            "github",
+            "gitlab",
+            "sharepoint",
+            "postgresql",
+        } and not secret_ref:
             raise ValueError(f"secret_ref is required for {connector_type}")
-        if connector_type == "github":
-            validate_https_url(
-                payload.get("api_url") or "https://api.github.com",
-                settings.github_allowed_hosts,
-            )
-        elif connector_type == "gitlab":
-            validate_https_url(
-                payload.get("api_url") or "https://gitlab.com/api/v4",
-                settings.gitlab_allowed_hosts,
-            )
-        elif connector_type == "sharepoint" and payload.get("cursor"):
-            validate_https_url(payload["cursor"], settings.sharepoint_allowed_hosts)
-        elif connector_type == "postgresql":
-            schemas = payload.get("schemas", [])
-            if (
-                not isinstance(schemas, list)
-                or len(schemas) > 100
-                or any(
-                    not isinstance(schema, str)
-                    or not schema.strip()
-                    or len(schema) > 63
-                    for schema in schemas
-                )
-            ):
-                raise ValueError("PostgreSQL connector schemas are invalid")
+        if registration.validate_payload:
+            registration.validate_payload(payload)
     elif job_type == "integration.deliver":
         if set(payload) != {"delivery_id"} or not isinstance(payload.get("delivery_id"), str):
             raise ValueError("Integration delivery jobs require only delivery_id")
@@ -379,84 +355,3 @@ def validate_job_payload(job_type: str, payload: dict) -> None:
             raise ValueError(
                 "Governance evidence package jobs require only package_id"
             )
-
-
-def _build_connector(payload: dict, db: Session, tenant_id: str):
-    connector_type = payload["connector_type"]
-    account = payload["account"]
-    guard = provider_request_guard(db, tenant_id, connector_type)
-    if connector_type == "aws-s3":
-        return S3Connector(
-            account,
-            prefix=payload.get("prefix", ""),
-            region=payload.get("region"),
-            before_request=guard,
-        )
-    secret = resolve_secret(payload["secret_ref"]) if payload.get("secret_ref") else None
-    if connector_type == "google-drive":
-        try:
-            credentials_info = json.loads(secret or "")
-        except json.JSONDecodeError as exc:
-            raise ValueError("Google Drive secret_ref must contain service-account JSON") from exc
-        return GoogleDriveConnector(
-            account=account,
-            credentials_info=credentials_info,
-            impersonate_user=payload.get("impersonate_user"),
-            drive_id=payload.get("drive_id"),
-            before_request=guard,
-        )
-    if connector_type == "github":
-        return GitHubConnector(
-            account,
-            secret or "",
-            payload.get("api_url") or "https://api.github.com",
-            allowed_hosts=settings.github_allowed_hosts,
-            before_request=guard,
-        )
-    if connector_type == "gitlab":
-        return GitLabConnector(
-            account,
-            secret or "",
-            payload.get("api_url") or "https://gitlab.com/api/v4",
-            allowed_hosts=settings.gitlab_allowed_hosts,
-            before_request=guard,
-        )
-    if connector_type == "sharepoint":
-        site_id = payload.get("site_id") or account
-        drive_id = payload.get("drive_id")
-        if not drive_id:
-            raise ValueError("drive_id is required for SharePoint")
-        return SharePointConnector(
-            site_id,
-            drive_id,
-            secret or "",
-            allowed_hosts=settings.sharepoint_allowed_hosts,
-            before_request=guard,
-        )
-    if connector_type == "postgresql":
-        return PostgreSQLConnector(
-            account,
-            secret or "",
-            schemas=payload.get("schemas", []),
-            before_request=guard,
-        )
-    raise ValueError(f"Unsupported connector type: {connector_type}")
-
-
-def resolve_secret(reference: str) -> str:
-    if reference.startswith("env:"):
-        name = reference.removeprefix("env:")
-        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", name):
-            raise ValueError("Environment secret references must use uppercase variable names")
-        value = os.getenv(name)
-        if value is None:
-            raise ValueError(f"Secret environment variable is not set: {name}")
-        return value
-    if reference.startswith("file:"):
-        path = Path(reference.removeprefix("file:")).expanduser().resolve()
-        if not any(path.is_relative_to(root) for root in settings.secret_file_roots):
-            raise ValueError("Secret file is outside ODG_SECRET_FILE_ROOTS")
-        if path.stat().st_size > 1024 * 1024:
-            raise ValueError("Secret files must not exceed 1 MiB")
-        return path.read_text(encoding="utf-8").strip()
-    raise ValueError("Secret references must use env:NAME or file:/path")

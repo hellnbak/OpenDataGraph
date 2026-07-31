@@ -6,7 +6,10 @@ from .config import settings
 from .database import SessionLocal
 from .observability import configure_logging
 from .services.jobs import claim_next_job, execute_job, recover_stale_jobs
-from .services.ownership import enqueue_due_ownership_campaigns
+from .services.ownership import (
+    enqueue_due_ownership_campaigns,
+    enqueue_due_ownership_escalations,
+)
 from .services.schedules import enqueue_due_schedules
 
 
@@ -31,6 +34,10 @@ def run() -> None:
         with SessionLocal() as db:
             enqueue_due_schedules(db, settings.worker_schedule_batch_size)
             enqueue_due_ownership_campaigns(
+                db,
+                settings.worker_schedule_batch_size,
+            )
+            enqueue_due_ownership_escalations(
                 db,
                 settings.worker_schedule_batch_size,
             )

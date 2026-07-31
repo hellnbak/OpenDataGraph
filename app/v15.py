@@ -283,6 +283,7 @@ def create_ownership_campaign(
             req.scope,
             req.due_at,
             principal.subject,
+            escalation_policy_id=req.escalation_policy_id,
         )
     except IntegrityError as exc:
         db.rollback()

@@ -24,6 +24,14 @@ from app.models import (
     utc_now,
 )
 from app.services.governance import OPEN_STATUSES
+from app.services.evidence_signing import (
+    canonical_json,
+    section_digests,
+    sign_manifest,
+    validate_signing_profile,
+    verify_evidence_package,
+)
+from app.version import VERSION
 
 
 PACKAGE_CATEGORIES = {
@@ -220,6 +228,7 @@ def create_evidence_package(
     categories: list[str],
     max_records: int,
     created_by: str,
+    signing_profile: str | None = None,
 ) -> tuple[GovernanceEvidencePackage, object]:
     from app.services.jobs import enqueue_job
 
@@ -233,6 +242,7 @@ def create_evidence_package(
         raise ValueError(
             f"Unsupported governance evidence categories: {', '.join(sorted(unknown))}"
         )
+    selected_signing_profile = validate_signing_profile(signing_profile)
     now = utc_now()
     record = GovernanceEvidencePackage(
         tenant_id=tenant_id,
@@ -241,6 +251,7 @@ def create_evidence_package(
         window_end=now,
         categories_json=json.dumps(normalized_categories),
         max_records=max_records,
+        signing_profile=selected_signing_profile,
         created_by=created_by,
     )
     db.add(record)
@@ -276,33 +287,36 @@ def execute_evidence_package(
         record,
         categories,
     )
-    document = {
-        "manifest": {
-            "format": "opendatagraph-governance-evidence",
-            "version": 1,
-            "package_id": record.package_id,
-            "tenant_id": tenant_id,
-            "window_start": record.window_start,
-            "window_end": record.window_end,
-            "categories": categories,
-            "record_count": record_count,
-            "truncated": truncated,
-            "content_policy": "metadata-only",
-            "generated_at": utc_now(),
-        },
-        "analytics": governance_analytics(
-            db,
-            tenant_id,
-            max(1, (record.window_end - record.window_start).days),
-        ),
-        "records": sections,
+    analytics = governance_analytics(
+        db,
+        tenant_id,
+        max(1, (record.window_end - record.window_start).days),
+    )
+    payload = {"analytics": analytics, "records": sections}
+    manifest = {
+        "format": "opendatagraph-governance-evidence",
+        "version": 2,
+        "generator": {"name": "OpenDataGraph", "version": VERSION},
+        "package_id": record.package_id,
+        "tenant_id": tenant_id,
+        "window_start": record.window_start,
+        "window_end": record.window_end,
+        "categories": categories,
+        "record_count": record_count,
+        "truncated": truncated,
+        "content_policy": "metadata-only",
+        "generated_at": utc_now(),
+        "payload_sha256": hashlib.sha256(canonical_json(payload)).hexdigest(),
+        "section_sha256": section_digests(analytics, sections),
     }
-    content = json.dumps(
-        document,
-        default=_json_default,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode()
+    assurance = sign_manifest(manifest, record.signing_profile)
+    document = {
+        "manifest": manifest,
+        "analytics": analytics,
+        "records": sections,
+        "assurance": assurance,
+    }
+    content = canonical_json(document)
     if len(content) > settings.governance_package_max_bytes:
         raise ValueError("Governance evidence package exceeds the configured byte limit")
     digest = hashlib.sha256(content).hexdigest()
@@ -312,6 +326,8 @@ def execute_evidence_package(
     record.truncated = truncated
     record.storage_uri = storage_uri
     record.sha256 = digest
+    record.signature_type = assurance["type"] if assurance["status"] == "signed" else None
+    record.signature_key_id = assurance.get("key_id")
     record.size_bytes = len(content)
     record.error = None
     record.completed_at = utc_now()
@@ -383,12 +399,23 @@ def evidence_package_response(record: GovernanceEvidencePackage) -> dict:
         "truncated": record.truncated,
         "storage_uri": record.storage_uri,
         "sha256": record.sha256,
+        "signed": bool(record.signature_type),
+        "signing_profile": record.signing_profile,
+        "signature_type": record.signature_type,
+        "signature_key_id": record.signature_key_id,
         "size_bytes": record.size_bytes,
         "error": record.error,
         "created_by": record.created_by,
         "created_at": record.created_at,
         "completed_at": record.completed_at,
     }
+
+
+def verify_stored_evidence_package(
+    record: GovernanceEvidencePackage,
+    verification_profile: str | None = None,
+) -> dict:
+    return verify_evidence_package(load_evidence_package(record), verification_profile)
 
 
 def _package_sections(

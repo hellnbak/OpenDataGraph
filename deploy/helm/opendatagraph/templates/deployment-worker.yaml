@@ -43,6 +43,14 @@ spec:
               mountPath: {{ .Values.workloadIdentityToken.mountDirectory | quote }}
               readOnly: true
             {{- end }}
+            {{- range .Values.workloadIdentityTokens }}
+            - name: workload-identity-token-{{ .name }}
+              mountPath: {{ .mountDirectory | quote }}
+              readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
@@ -54,6 +62,18 @@ spec:
                   path: {{ .Values.workloadIdentityToken.fileName | quote }}
                   audience: {{ .Values.workloadIdentityToken.audience | quote }}
                   expirationSeconds: {{ .Values.workloadIdentityToken.expirationSeconds }}
+        {{- end }}
+        {{- range .Values.workloadIdentityTokens }}
+        - name: workload-identity-token-{{ .name }}
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: {{ .fileName | quote }}
+                  audience: {{ .audience | quote }}
+                  expirationSeconds: {{ default 3600 .expirationSeconds }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
       nodeSelector:
         {{- toYaml .Values.nodeSelector | nindent 8 }}

@@ -1,0 +1,10 @@
+{
+  "application_replicas": 1,
+  "database": {
+    "engine": "SQLite",
+    "storage": "ephemeral memory"
+  },
+  "name": "local-development",
+  "purpose": "Deterministic developer comparison only",
+  "worker_replicas": 0
+}

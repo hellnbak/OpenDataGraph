@@ -1,6 +1,6 @@
 # Governance Operations
 
-OpenDataGraph v1.6 unifies policy and evidence approvals in a tenant-scoped operational review queue and adds broader posture analytics and metadata-only evidence packages.
+OpenDataGraph v1.7 unifies policy and evidence approvals in a tenant-scoped operational review queue and adds broader posture analytics and signed metadata-only evidence packages.
 
 ## Task sources
 

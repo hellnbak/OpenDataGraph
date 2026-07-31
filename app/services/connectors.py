@@ -35,6 +35,13 @@ async def ingest_connector(
         source=connector.source,
         source_account=connector.account,
         cursor=cursor,
+        connector_version=(
+            connector.manifest.version if getattr(connector, "manifest", None) else None
+        ),
+        capability_digest=(
+            connector.manifest.digest() if getattr(connector, "manifest", None) else None
+        ),
+        capability_policy_version=getattr(connector, "capability_policy_version", None),
     )
     db.add(run)
     db.commit()

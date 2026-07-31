@@ -1,6 +1,6 @@
 # Classification
 
-The v1.6 pipeline produces sensitivity, labels, business domain, explanation, confidence, and review requirements.
+The v1.7 pipeline produces sensitivity, labels, business domain, explanation, confidence, and review requirements.
 
 ## Inputs
 
