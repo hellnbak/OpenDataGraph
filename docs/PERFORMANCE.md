@@ -10,10 +10,12 @@ Run:
 python -m app.benchmark --profile local
 ```
 
-The command creates an isolated in-memory SQLite schema, loads synthetic assets and graph edges, then reports p50, p95, maximum latency, and operations per second for:
+The command creates an isolated in-memory SQLite schema, loads synthetic assets, an approved benchmark agent, and graph edges, then reports p50, p95, maximum latency, and operations per second for:
 
 - filtered catalog reads;
-- bounded graph traversal.
+- bounded graph traversal;
+- runtime authorization with one durable decision receipt commit;
+- ten-item runtime authorization batches with one receipt transaction.
 
 Inputs are bounded. The result is useful for code-change comparison on the same machine; it is not a production capacity result.
 
@@ -65,8 +67,10 @@ For a production-like qualification:
 2. Run migrations and warm search indexes before measurement.
 3. Exercise API and worker replicas separately and together.
 4. Measure connector and ownership schedules, governance notifications and packages, integration delivery, evidence operations, and graph exports with synthetic metadata.
-5. Monitor database connections, query latency, worker queue depth, retries, memory, CPU, storage latency, and external rate limits.
+5. Monitor database connections, commit latency, query latency, runtime authorization rate, decision distribution, signing and purge lag, worker queue depth, retries, memory, CPU, storage latency, and external rate limits.
 6. Run a read-only soak for the intended observation period and a separate approved workload test for mutation paths.
 7. Record environment, data volume, configuration, commit or release version, result, and acceptance threshold.
 
 Do not use live provider calls, customer content, credentials, or destructive source actions in qualification fixtures.
+
+Runtime authorization is a mutation path because every completed evaluation writes a receipt. The read-only soak tool does not exercise it. Use an approved synthetic workload, explicit rate and concurrency bounds, and disposable identifiers when qualifying AuthZEN endpoints. See [Scaling](SCALING.md).

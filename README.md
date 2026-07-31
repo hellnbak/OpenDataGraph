@@ -2,7 +2,7 @@
 
 OpenDataGraph is a source-available data intelligence and AI policy platform. It catalogs enterprise data, explains sensitivity and lifecycle findings, evaluates AI data-use policy, records observed AI activity, and exposes governed context through REST APIs, an operational console, and an MCP server.
 
-> Release: **v1.7.0 Assurance and Extensibility Preview**. Shared deployments require authentication, tenant-bound identities, TLS, external secret management, migrations, backups, network controls, and reviewed connector, integration, workload-identity, signing, evidence-package, and export configuration.
+> Release: **v1.8.0 Runtime Governance and Scale Preview**. Shared deployments require authentication, tenant-bound identities, TLS, external secret management, migrations, backups, network controls, and reviewed runtime authorization, receipt signing, connector, integration, workload-identity, evidence-package, and export configuration.
 
 ## Platform capabilities
 
@@ -10,7 +10,9 @@ OpenDataGraph is a source-available data intelligence and AI policy platform. It
 - Metadata-first connectors for AWS S3, Google Drive, GitHub, GitLab, SharePoint / OneDrive, and PostgreSQL catalogs through a normalized cursor-aware connector SDK with versioned capability manifests, conformance checks, an allowlisted plugin registry, and tenant policy enforcement
 - Deterministic classification, optional bounded enrichment, confidence and explanations, human review, and lifecycle recommendations
 - Explainable AI data-use decisions, YAML rules, versioned policy bundles, simulation, diffs, delegated approvals, renewable exceptions, activation, rollback, and audit history
+- AuthZEN-compatible single and bounded batch runtime authorization, observe/warn/enforce deployment modes, policy obligations, idempotency, append-only decision receipts, retention, deferred Ed25519/AWS KMS/Sigstore signing, and independent verification
 - AI agent registry, idempotent AI usage events, policy correlation, indexed relational graph edges, OpenLineage ingestion, path explanations, bounded multi-hop queries, synchronous export, and asynchronous large-estate export jobs
+- First-class model, prompt, vector-index, tool, endpoint, and AI-system registry with expected AI relationships, idempotent runtime observations, drift detection, and graph projection
 - Tenant-bound API keys, signed provider-specific OIDC validation with cached discovery, fixed-trust short-lived workload federation, SCIM user, group, and bulk provisioning, deprovisioning workflows, service accounts with one-time credentials and controlled rotation, ordered roles, and tenant-scoped APIs
 - Durable database-backed jobs, interval or time-zone-aware cron connector and ownership schedules, maintenance windows, shared provider request budgets, governance notifications, evidence-package and export execution, retries, cancellation, stale-claim recovery, and reference-only secrets
 - OpenSearch-backed metadata indexing with database fallback and tenant-scoped search
@@ -20,16 +22,16 @@ OpenDataGraph is a source-available data intelligence and AI policy platform. It
 - Catalog ownership campaigns with bounded scope, recurring schedules, durable escalation stages, selected notification destinations, immutable assignment snapshots, owner attestations, owner correction, remediation deadlines, completion tracking, and trend analytics
 - Governance analytics with SLA, aging, ownership, evidence, identity, and policy-decision posture plus integrity-checked metadata-only evidence packages with optional Ed25519, AWS KMS, or Sigstore signing and independent trust verification
 - Pluggable graph export sinks for allowlisted S3, HTTPS, Google Cloud Storage, and Azure Blob destinations, using temporary workload exchange without persisted sink credentials
-- Alembic migrations, SQLite and PostgreSQL backup/restore, PostgreSQL query-plan capture, production-like benchmark profiles, regression baselines, readiness checks, Prometheus metrics, JSON logs, request IDs, and optional OTLP tracing
+- Alembic migrations, SQLite and PostgreSQL backup/restore, configurable PostgreSQL connection pools, cached policy definitions, runtime authorization and receipt benchmarks, read-only query-plan capture, regression baselines, readiness checks, Prometheus metrics, JSON logs, request IDs, and optional OTLP tracing
 - Operational console, REST API, MCP server, Docker Compose, HA-oriented Helm chart, and AWS backing-service templates
 
-## New in v1.7
+## New in v1.8
 
-- Governance evidence packages use a signed canonical manifest, per-section digests, separate trust profiles, API verification, and an offline verifier; Ed25519, AWS KMS, and Sigstore signing are supported
-- Connector SDK v2 adds versioned manifests, digest-pinned run records, deterministic conformance checks, an administrator allowlisted plugin registry, and deployment plus tenant capability policy enforcement
-- AWS, Azure, and Google Cloud workload exchange profiles issue temporary credentials for S3, Google Cloud Storage, Azure Blob, and KMS operations without persisting subject or provider tokens
-- Ownership escalation policies add idempotent reminder and overdue stages, durable retry state, explicit integration routing, and bounded completion, response-time, and overdue trends
-- Performance baseline capture compares latency, throughput, and structural read-only PostgreSQL plan fingerprints across documented reference topologies
+- OpenID AuthZEN Authorization API 1.0 request and response shapes at `/access/v1/evaluation` and `/access/v1/evaluations`, plus well-known PDP metadata
+- Runtime policy obligations and append-only decision receipts with request-property digests, bounded retention, idempotency, asynchronous signing, verification, governance analytics, and evidence-package inclusion
+- Governed MCP tools that authorize context access before reading catalog, AI activity, summary, and relationship APIs
+- AI resource registration and expected-versus-observed lineage for models, prompts, vector indexes, tools, endpoints, AI systems, agents, data assets, and datasets
+- Policy caching, request-local batch lookup reuse, tenant-leading receipt and lineage indexes, configurable PostgreSQL pools, expanded query-plan capture, and authorization throughput benchmarks
 
 ## Local start
 
@@ -70,7 +72,7 @@ The stack runs PostgreSQL, OpenSearch, a migration task, the API, and a backgrou
 
 ## Configuration
 
-Review `.env.example` before running outside local development. Important settings include `ODG_DATABASE_URL`, `ODG_DEFAULT_TENANT`, human and workload identity providers, cloud workload exchange profiles, service-account lifetimes, `ODG_SEARCH_BACKEND`, evidence and governance-package storage and signing, governance SLAs, `ODG_SECRET_FILE_ROOTS`, connector capability policy and host allowlists, graph export storage and sink allowlists, and `OTEL_EXPORTER_OTLP_ENDPOINT`.
+Review `.env.example` before running outside local development. Important settings include `ODG_DATABASE_URL`, database pool limits, `ODG_DEFAULT_TENANT`, `ODG_PUBLIC_BASE_URL`, runtime authorization mode and receipt lifecycle, human and workload identity providers, cloud workload exchange profiles, service-account lifetimes, `ODG_SEARCH_BACKEND`, evidence and governance-package storage and signing, governance SLAs, `ODG_SECRET_FILE_ROOTS`, connector capability policy and host allowlists, graph export storage and sink allowlists, and `OTEL_EXPORTER_OTLP_ENDPOINT`.
 
 Keep `ODG_AUTH_DISABLED=true` only for trusted local development.
 
@@ -100,10 +102,13 @@ Keep `ODG_AUTH_DISABLED=true` only for trusted local development.
 - [Connector conformance and capability policy](docs/CONNECTOR_CONFORMANCE.md)
 - [Classification](docs/CLASSIFICATION.md)
 - [Policy as code](docs/POLICY_AS_CODE.md)
+- [Runtime authorization](docs/RUNTIME_AUTHORIZATION.md)
 - [AI usage events](docs/AI_USAGE_EVENTS.md)
+- [AI resource lineage](docs/AI_RESOURCE_LINEAGE.md)
 - [Knowledge graph](docs/KNOWLEDGE_GRAPH.md)
 - [Export sinks](docs/EXPORT_SINKS.md)
 - [Performance qualification](docs/PERFORMANCE.md)
+- [Scaling](docs/SCALING.md)
 - [Performance baselines](docs/PERFORMANCE_BASELINES.md)
 - [PostgreSQL query plans](docs/QUERY_PLANS.md)
 - [Upgrade compatibility](docs/UPGRADE_COMPATIBILITY.md)
@@ -126,6 +131,6 @@ docker compose build
 
 ## License
 
-OpenDataGraph v1.7.0 is source-available under the [Functional Source License, Version 1.1, ALv2 Future License](LICENSE) (`FSL-1.1-ALv2`). Internal use, non-commercial education and research, and qualifying professional services are permitted. Competing commercial products and services are not permitted.
+OpenDataGraph v1.8.0 is source-available under the [Functional Source License, Version 1.1, ALv2 Future License](LICENSE) (`FSL-1.1-ALv2`). Internal use, non-commercial education and research, and qualifying professional services are permitted. Competing commercial products and services are not permitted.
 
-The v1.7.0 release becomes available under Apache License 2.0 on July 31, 2028. Earlier releases remain available under the terms distributed with those releases. Contact the licensor for commercial terms not granted by FSL.
+The v1.8.0 release becomes available under Apache License 2.0 on July 31, 2028. Earlier releases remain available under the terms distributed with those releases. Contact the licensor for commercial terms not granted by FSL.

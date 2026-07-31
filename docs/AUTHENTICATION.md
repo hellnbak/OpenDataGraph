@@ -1,6 +1,6 @@
 # Authentication and Tenancy
 
-OpenDataGraph v1.7 binds each API-key, service account, validated human OIDC principal, or short-lived workload identity to a role and tenant.
+OpenDataGraph v1.8 binds each API-key, service account, validated human OIDC principal, or short-lived workload identity to a role and tenant.
 
 ## Local mode
 
@@ -39,6 +39,8 @@ Roles, from least to most privileged:
 
 Every principal is bound to one tenant. Data-bearing APIs do not accept a caller-selected tenant header or tenant request field.
 
+AuthZEN single and batch evaluation requires `analyst`; runtime receipt inspection and verification require `auditor`; AI resource and expected-lineage changes require `data-owner`; lineage observation requires `analyst`. The subject inside an authorization request is policy input and never replaces the authenticated caller or its tenant and role.
+
 ## OIDC validation
 
 `ODG_OIDC_PROVIDERS_JSON` configures one or more providers with exact issuer, audience, accepted asymmetric algorithms, claim paths, and optional role mapping. Providers may use an explicit HTTPS JWKS URL or bounded, cached OpenID Connect discovery. Bearer tokens are rejected unless signature, issuer, audience, lifetime, subject, tenant, and supported role validation succeeds.
@@ -57,6 +59,6 @@ SCIM provisioning uses separate bearer tokens bound to tenants in `ODG_SCIM_TOKE
 
 ## Isolation behavior
 
-Tenant filters apply to assets, agents, policy audits and bundles, delegations, exceptions, connector runs and schedules, classification reviews, AI usage events, lineage, graph edges and exports, jobs, evidence and dispositions, integrations and deliveries, SCIM resources and deprovisioning workflows, service accounts, governance reviews and packages, and ownership campaigns and schedules. Cross-tenant object identifiers return `404` rather than revealing that the object exists.
+Tenant filters apply to assets, agents, policy audits and bundles, runtime receipts, AI resources and lineage, delegations, exceptions, connector runs and schedules, classification reviews, AI usage events, OpenLineage, graph edges and exports, jobs, evidence and dispositions, integrations and deliveries, SCIM resources and deprovisioning workflows, service accounts, governance reviews and packages, and ownership campaigns and schedules. Cross-tenant object identifiers return `404` rather than revealing that the object exists.
 
 Use separate databases when policy requires physical, cryptographic, regional, or customer-managed-key isolation.

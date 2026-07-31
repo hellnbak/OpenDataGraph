@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import (
+    AILineageObservation,
     DecisionAudit,
     EvidenceDisposition,
     EvidenceRecord,
@@ -19,6 +20,7 @@ from app.models import (
     OwnershipAssignment,
     OwnershipCampaign,
     PolicyBundle,
+    RuntimeDecisionReceipt,
     ServiceAccount,
     ServiceAccountCredential,
     utc_now,
@@ -41,6 +43,8 @@ PACKAGE_CATEGORIES = {
     "policies",
     "service-accounts",
     "graph-exports",
+    "runtime-decisions",
+    "ai-lineage",
 }
 
 
@@ -86,6 +90,34 @@ def governance_analytics(db: Session, tenant_id: str, days: int = 30) -> dict:
                 DecisionAudit.created_at >= window_start,
             )
             .group_by(DecisionAudit.decision)
+        ).all()
+    }
+    runtime_decision_counts = {
+        str(decision).lower(): count
+        for decision, count in db.execute(
+            select(
+                RuntimeDecisionReceipt.decision,
+                func.count(RuntimeDecisionReceipt.id),
+            )
+            .where(
+                RuntimeDecisionReceipt.tenant_id == tenant_id,
+                RuntimeDecisionReceipt.created_at >= window_start,
+            )
+            .group_by(RuntimeDecisionReceipt.decision)
+        ).all()
+    }
+    receipt_signing_counts = {
+        status: count
+        for status, count in db.execute(
+            select(
+                RuntimeDecisionReceipt.signing_status,
+                func.count(RuntimeDecisionReceipt.id),
+            )
+            .where(
+                RuntimeDecisionReceipt.tenant_id == tenant_id,
+                RuntimeDecisionReceipt.created_at >= window_start,
+            )
+            .group_by(RuntimeDecisionReceipt.signing_status)
         ).all()
     }
     return {
@@ -218,6 +250,17 @@ def governance_analytics(db: Session, tenant_id: str, days: int = 30) -> dict:
             ),
         },
         "policy_decisions": decision_counts,
+        "runtime_authorization": {
+            "decisions": runtime_decision_counts,
+            "receipt_signing": receipt_signing_counts,
+            "lineage_drift_events": _count(
+                db,
+                AILineageObservation,
+                AILineageObservation.tenant_id == tenant_id,
+                AILineageObservation.drift_detected.is_(True),
+                AILineageObservation.observed_at >= window_start,
+            ),
+        },
     }
 
 
@@ -445,6 +488,16 @@ def _package_sections(
             _service_account_record,
         ),
         "graph-exports": (GraphExport, GraphExport.created_at, _graph_export_record),
+        "runtime-decisions": (
+            RuntimeDecisionReceipt,
+            RuntimeDecisionReceipt.created_at,
+            _runtime_receipt_record,
+        ),
+        "ai-lineage": (
+            AILineageObservation,
+            AILineageObservation.recorded_at,
+            _ai_lineage_record,
+        ),
     }
     for category in categories:
         model, timestamp, serializer = definitions[category]
@@ -550,6 +603,43 @@ def _graph_export_record(record: GraphExport) -> dict:
         "size_bytes": record.size_bytes,
         "created_at": record.created_at,
         "completed_at": record.completed_at,
+    }
+
+
+def _runtime_receipt_record(record: RuntimeDecisionReceipt) -> dict:
+    return {
+        "receipt_id": record.receipt_id,
+        "request_id": record.request_id,
+        "subject_type": record.subject_type,
+        "subject_id": record.subject_id,
+        "action_name": record.action_name,
+        "resource_type": record.resource_type,
+        "resource_id": record.resource_id,
+        "decision": record.decision,
+        "policy_decision": record.policy_decision,
+        "enforcement_mode": record.enforcement_mode,
+        "risk_score": record.risk_score,
+        "policy_version": record.policy_version,
+        "manifest_sha256": record.manifest_sha256,
+        "signing_status": record.signing_status,
+        "signing_profile": record.signing_profile,
+        "retention_until": record.retention_until,
+        "created_at": record.created_at,
+    }
+
+
+def _ai_lineage_record(record: AILineageObservation) -> dict:
+    return {
+        "event_id": record.event_id,
+        "relationship_id": record.relationship_id,
+        "source_type": record.source_type,
+        "source_id": record.source_id,
+        "relationship": record.relationship,
+        "target_type": record.target_type,
+        "target_id": record.target_id,
+        "drift_detected": record.drift_detected,
+        "observed_at": record.observed_at,
+        "recorded_at": record.recorded_at,
     }
 
 

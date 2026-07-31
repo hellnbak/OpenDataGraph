@@ -10,6 +10,19 @@ data:
   ODG_AUTO_SEED_DEMO: {{ .Values.config.autoSeedDemo | quote }}
   ODG_DEFAULT_TENANT: {{ .Values.config.defaultTenant | quote }}
   ODG_AUTH_DISABLED: {{ .Values.config.authDisabled | quote }}
+  ODG_PUBLIC_BASE_URL: {{ .Values.config.publicBaseUrl | quote }}
+  ODG_DATABASE_POOL_SIZE: {{ .Values.config.databasePoolSize | quote }}
+  ODG_DATABASE_MAX_OVERFLOW: {{ .Values.config.databaseMaxOverflow | quote }}
+  ODG_DATABASE_POOL_TIMEOUT_SECONDS: {{ .Values.config.databasePoolTimeoutSeconds | quote }}
+  ODG_DATABASE_POOL_RECYCLE_SECONDS: {{ .Values.config.databasePoolRecycleSeconds | quote }}
+  ODG_POLICY_CACHE_SECONDS: {{ .Values.config.policyCacheSeconds | quote }}
+  ODG_RUNTIME_AUTHORIZATION_MODE: {{ .Values.config.runtimeAuthorizationMode | quote }}
+  ODG_RUNTIME_AUTHORIZATION_BATCH_MAX: {{ .Values.config.runtimeAuthorizationBatchMax | quote }}
+  ODG_RUNTIME_RECEIPT_RETENTION_DAYS: {{ .Values.config.runtimeReceiptRetentionDays | quote }}
+  ODG_RUNTIME_RECEIPT_SIGNING_PROFILE: {{ .Values.config.runtimeReceiptSigningProfile | quote }}
+  ODG_RUNTIME_RECEIPT_SIGNING_BATCH_SIZE: {{ .Values.config.runtimeReceiptSigningBatchSize | quote }}
+  ODG_RUNTIME_RECEIPT_SIGNING_MAX_ATTEMPTS: {{ .Values.config.runtimeReceiptSigningMaxAttempts | quote }}
+  ODG_RUNTIME_RECEIPT_PURGE_BATCH_SIZE: {{ .Values.config.runtimeReceiptPurgeBatchSize | quote }}
   ODG_CLASSIFICATION_MODE: {{ .Values.config.classificationMode | quote }}
   ODG_SEARCH_BACKEND: {{ .Values.config.searchBackend | quote }}
   ODG_OPENSEARCH_REQUIRED: {{ .Values.config.opensearchRequired | quote }}

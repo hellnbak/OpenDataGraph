@@ -70,3 +70,15 @@ Delivered in v1.6.0 with metadata-only PostgreSQL catalog coverage as the first 
 - PostgreSQL benchmark baselines captured across documented reference topologies
 
 Delivered in v1.7.0 with Ed25519, AWS KMS, and Sigstore evidence assurance; connector SDK v2 conformance and capability policy; AWS, Azure, and Google Cloud workload exchange; governed GCS and Azure Blob sinks; ownership escalation trends; and comparative performance baselines.
+
+## v1.8 — Runtime governance and scale
+
+- AuthZEN-compatible single and batch policy-decision point APIs
+- Runtime enforcement modes, obligations, idempotency, and durable receipts
+- Deferred receipt signing, verification, retention, analytics, and evidence packaging
+- Governed MCP policy-enforcement points
+- Model, prompt, vector-index, tool, endpoint, and AI-system registry
+- Expected-versus-observed AI lineage and drift detection
+- Policy caching, PostgreSQL pool controls, tenant-leading indexes, authorization benchmarks, and query plans
+
+Delivered in v1.8.0 with runtime authorization and assurance, governed AI resource lineage, and a measured qualification path rather than universal capacity claims.

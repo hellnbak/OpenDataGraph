@@ -25,7 +25,11 @@ The engine supports asset sensitivity, destination type, agent status, action, a
 
 Decisions are ordered `allow < conditional < deny`. Matched rules contribute reasons, controls, and risk. The result also considers agent approval, sensitivity ceiling, domain scope, destination approval, and asset exposure.
 
-Standard controls include `tenant-context`, and policy audits remain in the authenticated tenant. v1.7 retains versioned bundles, structured diffs, delegated review, activation, rollback, expiring exceptions, renewal, unified operational review tasks, analytics, and signed metadata-only evidence packaging. See [Policy governance](POLICY_GOVERNANCE.md).
+Standard controls include `tenant-context`, and policy audits and runtime receipts remain in the authenticated tenant. v1.8 retains versioned bundles, structured diffs, delegated review, activation, rollback, expiring exceptions, renewal, unified operational review tasks, analytics, and signed metadata-only evidence packaging.
+
+AuthZEN runtime evaluation maps subject, resource, action, and context attributes into the same deterministic policy context. Registered agent and data-asset pairs use the full existing AI data-use evaluation path. Conditional runtime results return obligations for the policy-enforcement point. Effective definitions are cached for `ODG_POLICY_CACHE_SECONDS`; active-bundle activation invalidates the local process immediately and other replicas observe the change after their bounded interval.
+
+See [Policy governance](POLICY_GOVERNANCE.md) and [Runtime authorization](RUNTIME_AUTHORIZATION.md).
 
 ## Simulation
 

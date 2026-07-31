@@ -41,6 +41,16 @@ The chart is under `deploy/helm/opendatagraph`. It requires a pre-created Kubern
 
 The migration hook runs before install and upgrade. The chart deploys multiple API and worker replicas, probes, autoscaling, a disruption budget, and a network policy. Configure TLS ingress, workload identity, secret injection, egress restrictions, and telemetry scraping for the target cluster. `workloadIdentityToken` preserves the single-token v1.6 configuration. `workloadIdentityTokens` can project multiple audience-specific Kubernetes service-account tokens into API and worker replicas for cloud exchange profiles. `extraVolumes` and `extraVolumeMounts` can mount externally managed public or private signing material under `/run/secrets`.
 
+## Runtime authorization and capacity
+
+Set `config.publicBaseUrl` to the externally reachable HTTPS policy-decision point URL. The well-known AuthZEN document derives both evaluation endpoints from this value. Keep `config.runtimeAuthorizationMode=enforce` for shared deployments; `warn` and `observe` are migration modes.
+
+Review batch size, receipt retention, signing profile, signing batch size, retry count, and purge batch size before enabling runtime traffic. Receipt signing profiles and verification trust profiles remain in the Kubernetes Secret. A configured receipt signing profile must reference key material mounted under approved secret roots or a least-privilege KMS identity available to workers.
+
+Database pool limits apply per API or worker process. Multiply `databasePoolSize + databaseMaxOverflow` by the maximum simultaneous API and worker replica count, including rollout and autoscaling overlap, then reserve database connections for migrations, monitoring, failover, and administration. Tune against measured commit latency and query plans rather than connection count alone.
+
+Runtime receipts are durable synchronous PostgreSQL writes. API replicas can scale horizontally until database commit, pool, lock, or I/O limits dominate. Signing claims scale across workers, but KMS or Sigstore quotas can become the next bottleneck. See [Scaling](../SCALING.md).
+
 Provider and integration endpoints must use HTTPS and match exact host allowlists in chart configuration. OIDC discovery uses the configured issuer host; explicitly approve any different JWKS host. Add self-hosted provider domains explicitly and keep network-policy egress aligned with the same lists.
 
 ## AWS templates
@@ -63,7 +73,7 @@ The Helm default uses `ODG_GOVERNANCE_PACKAGE_BACKEND=s3`; provide `ODG_GOVERNAN
 
 ## Observability
 
-Collect `/metrics` through an internal scrape path. Set `OTEL_EXPORTER_OTLP_ENDPOINT` for an approved OTLP HTTP collector. Route JSON logs to centralized storage and alert on readiness failure, job failures, connector errors, elevated policy denies, database saturation, OpenSearch health, and evidence write failures.
+Collect `/metrics` through an internal scrape path. Set `OTEL_EXPORTER_OTLP_ENDPOINT` for an approved OTLP HTTP collector. Route JSON logs to centralized storage and alert on readiness failure, job failures, connector errors, elevated policy denies, runtime authorization latency and errors, receipt signing and purge lag, lineage drift, database saturation, OpenSearch health, and evidence write failures.
 
 ## Backup and recovery
 
@@ -74,6 +84,7 @@ Use `python -m app.operations backup` for application-coordinated recovery testi
 - TLS and identity-aware ingress
 - `ODG_AUTH_DISABLED=false`
 - tenant-bound, role-scoped identities
+- externally correct HTTPS `ODG_PUBLIC_BASE_URL`, enforced runtime mode, bounded batches, receipt retention, and signing trust
 - managed PostgreSQL, OpenSearch, and S3-compatible evidence
 - external secret management and workload identity
 - connector egress restrictions
@@ -95,7 +106,7 @@ Use `python -m app.operations backup` for application-coordinated recovery testi
 - migration and rollback plans
 - tested database and evidence recovery
 - centralized logs, metrics, traces, and alerts
-- resource limits, probes, autoscaling, and disruption budgets
-- representative benchmark, accepted regression baseline, read-only query-plan fingerprint, and soak qualification
+- database connection budgets, resource limits, probes, autoscaling, and disruption budgets
+- representative runtime authorization and estate benchmarks, accepted regression baseline, read-only query-plan fingerprint, and soak qualification
 
 See `.env.example` for the complete environment-variable list.

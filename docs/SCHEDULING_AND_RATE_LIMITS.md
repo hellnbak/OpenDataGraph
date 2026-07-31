@@ -1,6 +1,6 @@
 # Scheduling and Provider Budgets
 
-OpenDataGraph v1.7 runs tenant-scoped connector scans and ownership campaigns on fixed intervals or five-field cron calendars. Workers atomically claim due schedules and enqueue reference-only `connector.scan` or `ownership.campaign.launch` jobs, then claim due ownership escalation stages with idempotent integration delivery.
+OpenDataGraph v1.8 runs tenant-scoped connector scans and ownership campaigns on fixed intervals or five-field cron calendars. Workers atomically claim due schedules and enqueue reference-only `connector.scan` or `ownership.campaign.launch` jobs, then claim due ownership escalation stages with idempotent integration delivery.
 
 ## Schedule types
 

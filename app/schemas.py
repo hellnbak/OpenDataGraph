@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class AssetOut(BaseModel):
@@ -449,3 +449,121 @@ class OwnershipEscalationPolicyUpdate(BaseModel):
         max_length=20,
     )
     enabled: bool | None = None
+
+
+class AuthZENSubject(BaseModel):
+    type: str = Field(min_length=1, max_length=80)
+    id: str = Field(min_length=1, max_length=320)
+    properties: dict = Field(default_factory=dict)
+
+
+class AuthZENResource(BaseModel):
+    type: str = Field(min_length=1, max_length=80)
+    id: str = Field(min_length=1, max_length=1024)
+    properties: dict = Field(default_factory=dict)
+
+
+class AuthZENAction(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    properties: dict = Field(default_factory=dict)
+
+
+class AuthZENEvaluationRequest(BaseModel):
+    subject: AuthZENSubject
+    resource: AuthZENResource
+    action: AuthZENAction
+    context: dict = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_size(self):
+        import json
+
+        if len(json.dumps(self.model_dump(), separators=(",", ":")).encode()) > 65_536:
+            raise ValueError("Access evaluation exceeds 64 KiB")
+        return self
+
+
+class AuthZENPartialEvaluation(BaseModel):
+    subject: AuthZENSubject | None = None
+    resource: AuthZENResource | None = None
+    action: AuthZENAction | None = None
+    context: dict | None = None
+
+
+class AuthZENEvaluationsOptions(BaseModel):
+    evaluations_semantic: str = Field(
+        default="execute_all",
+        pattern="^(execute_all|deny_on_first_deny|permit_on_first_permit)$",
+    )
+
+
+class AuthZENEvaluationsRequest(BaseModel):
+    subject: AuthZENSubject | None = None
+    resource: AuthZENResource | None = None
+    action: AuthZENAction | None = None
+    context: dict | None = None
+    evaluations: list[AuthZENPartialEvaluation] = Field(default_factory=list)
+    options: AuthZENEvaluationsOptions = Field(default_factory=AuthZENEvaluationsOptions)
+
+
+class AIResourceCreate(BaseModel):
+    resource_key: str = Field(min_length=1, max_length=320)
+    resource_type: str = Field(
+        pattern="^(model|prompt|vector-index|tool|endpoint|ai-system)$"
+    )
+    name: str = Field(min_length=1, max_length=240)
+    owner: str = Field(min_length=1, max_length=320)
+    provider: str = Field(default="", max_length=160)
+    region: str = Field(default="", max_length=120)
+    status: str = Field(
+        default="approved",
+        pattern="^(draft|review|approved|disabled)$",
+    )
+    risk_tier: str = Field(default="medium", pattern="^(low|medium|high|critical)$")
+    metadata: dict = Field(default_factory=dict)
+
+
+class AIResourceUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=240)
+    owner: str | None = Field(default=None, min_length=1, max_length=320)
+    provider: str | None = Field(default=None, max_length=160)
+    region: str | None = Field(default=None, max_length=120)
+    status: str | None = Field(
+        default=None,
+        pattern="^(draft|review|approved|disabled)$",
+    )
+    risk_tier: str | None = Field(
+        default=None,
+        pattern="^(low|medium|high|critical)$",
+    )
+    metadata: dict | None = None
+
+
+class AIResourceReference(BaseModel):
+    type: str = Field(min_length=1, max_length=80)
+    id: str = Field(min_length=1, max_length=320)
+
+
+class AIRelationshipCreate(BaseModel):
+    source: AIResourceReference
+    relationship: str = Field(
+        min_length=1,
+        max_length=120,
+        pattern=r"^[a-z][a-z0-9_.-]*$",
+    )
+    target: AIResourceReference
+    expected: bool = True
+    metadata: dict = Field(default_factory=dict)
+
+
+class AILineageObservationCreate(BaseModel):
+    event_id: str = Field(min_length=3, max_length=240)
+    source: AIResourceReference
+    relationship: str = Field(
+        min_length=1,
+        max_length=120,
+        pattern=r"^[a-z][a-z0-9_.-]*$",
+    )
+    target: AIResourceReference
+    observed_at: datetime
+    metadata: dict = Field(default_factory=dict)

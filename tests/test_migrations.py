@@ -5,7 +5,7 @@ from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, 
 from app.config import settings
 
 
-def test_initial_migration_creates_v17_schema(tmp_path, monkeypatch):
+def test_initial_migration_creates_v18_schema(tmp_path, monkeypatch):
     database = tmp_path / "migration.db"
     database_url = f"sqlite:///{database}"
     monkeypatch.setattr(settings, "database_url", database_url)
@@ -30,6 +30,10 @@ def test_initial_migration_creates_v17_schema(tmp_path, monkeypatch):
         "ownership_escalation_events",
         "ownership_escalation_policies",
         "connector_capability_policies",
+        "runtime_decision_receipts",
+        "ai_resources",
+        "ai_resource_relationships",
+        "ai_lineage_observations",
         "policy_approver_delegations",
         "policy_bundles",
         "provider_rate_limits",
@@ -78,6 +82,9 @@ def test_initial_migration_creates_v17_schema(tmp_path, monkeypatch):
     } <= {
         column["name"] for column in inspector.get_columns("ownership_campaigns")
     }
+    assert "ix_policy_exceptions_tenant_active_expires" in {
+        index["name"] for index in inspector.get_indexes("policy_exceptions")
+    }
     assert "ix_governance_review_tasks_tenant_status_due" in {
         index["name"] for index in inspector.get_indexes("governance_review_tasks")
     }
@@ -91,6 +98,22 @@ def test_initial_migration_creates_v17_schema(tmp_path, monkeypatch):
     }
     assert "escalation_policy_id" in {
         column["name"] for column in inspector.get_columns("ownership_campaigns")
+    }
+    assert {
+        "ix_runtime_receipts_tenant_created",
+        "ix_runtime_receipts_tenant_subject_created",
+        "ix_runtime_receipts_tenant_resource_created",
+        "ix_runtime_receipts_tenant_decision_created",
+        "ix_runtime_receipts_tenant_signing_created",
+        "ix_runtime_receipts_signing_queue",
+        "ix_runtime_receipts_retention_queue",
+    } <= {
+        index["name"]
+        for index in inspector.get_indexes("runtime_decision_receipts")
+    }
+    assert "ix_runtime_decision_receipts_signing_status" not in {
+        index["name"]
+        for index in inspector.get_indexes("runtime_decision_receipts")
     }
 
 

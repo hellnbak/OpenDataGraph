@@ -82,6 +82,7 @@ from .v14 import router as v14_router
 from .v15 import router as v15_router
 from .v16 import router as v16_router
 from .v17 import router as v17_router
+from .v18 import router as v18_router
 
 
 async def enrich_asset(asset: DataAsset, deterministic: bool = False) -> None:
@@ -140,6 +141,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifespan)
 configure_observability(app)
+app.include_router(v18_router)
 app.include_router(v17_router)
 app.include_router(v16_router)
 app.include_router(v15_router)

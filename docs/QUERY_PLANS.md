@@ -1,6 +1,6 @@
 # PostgreSQL Query Plans
 
-OpenDataGraph v1.7 includes read-only PostgreSQL plan capture for representative catalog, graph, governance, and ownership queries.
+OpenDataGraph v1.8 includes read-only PostgreSQL plan capture for representative catalog, graph, governance, ownership, runtime receipt, signing queue, receipt retention, and AI lineage drift queries.
 
 Run against an approved non-production or read-only diagnostic endpoint:
 
@@ -18,9 +18,13 @@ Review plans for:
 - unexpected sequential scans on large tables;
 - sort and row-estimate growth;
 - graph traversal fan-out;
-- governance and ownership deadline filtering.
+- governance and ownership deadline filtering;
+- tenant-leading receipt subject lookup;
+- signing-queue availability ordering;
+- receipt-retention ordering;
+- tenant-leading lineage drift filtering.
 
-Migration `20260731_0005` adds composite indexes for service-account credential expiry, governance due work, ownership campaigns and assignments, and asynchronous graph export status. Validate index value with representative distributions before adding environment-specific indexes.
+Migration `20260731_0005` adds composite indexes for service-account credential expiry, governance due work, ownership campaigns and assignments, and asynchronous graph export status. Migration `20260731_0007` adds runtime receipt, signing queue, AI resource, relationship, drift, and active exception indexes. Validate index value with representative distributions before adding environment-specific indexes.
 
 Query plans are diagnostic evidence, not capacity certification. Compare them with measured latency, buffer and I/O telemetry, connection saturation, and worker queue behavior.
 

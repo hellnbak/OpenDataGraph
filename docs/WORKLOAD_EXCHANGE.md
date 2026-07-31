@@ -1,6 +1,6 @@
 # Cloud Workload Identity Exchange
 
-OpenDataGraph v1.7 exchanges mounted or environment-referenced subject tokens for temporary AWS, Azure, or Google Cloud credentials. It does not persist subject tokens, access tokens, session keys, or returned credentials.
+OpenDataGraph v1.8 exchanges mounted or environment-referenced subject tokens for temporary AWS, Azure, or Google Cloud credentials. It does not persist subject tokens, access tokens, session keys, or returned credentials.
 
 This outbound exchange is separate from inbound workload authentication described in [Workload Identity Federation](WORKLOAD_IDENTITY.md).
 

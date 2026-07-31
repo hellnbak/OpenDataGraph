@@ -2,7 +2,7 @@ replicaCount: 2
 
 image:
   repository: opendatagraph
-  tag: "1.7.0"
+  tag: "1.8.0"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -48,6 +48,19 @@ config:
   defaultTenant: default
   autoSeedDemo: "false"
   authDisabled: "false"
+  publicBaseUrl: https://opendatagraph.example.invalid
+  databasePoolSize: "10"
+  databaseMaxOverflow: "20"
+  databasePoolTimeoutSeconds: "30"
+  databasePoolRecycleSeconds: "1800"
+  policyCacheSeconds: "5"
+  runtimeAuthorizationMode: enforce
+  runtimeAuthorizationBatchMax: "100"
+  runtimeReceiptRetentionDays: "90"
+  runtimeReceiptSigningProfile: ""
+  runtimeReceiptSigningBatchSize: "100"
+  runtimeReceiptSigningMaxAttempts: "3"
+  runtimeReceiptPurgeBatchSize: "10000"
   classificationMode: metadata
   searchBackend: opensearch
   opensearchRequired: "true"

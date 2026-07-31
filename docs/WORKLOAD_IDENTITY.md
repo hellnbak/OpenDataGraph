@@ -1,6 +1,6 @@
 # Workload Identity Federation
 
-OpenDataGraph v1.7 accepts short-lived signed workload tokens without creating or storing an application credential.
+OpenDataGraph v1.8 accepts short-lived signed workload tokens without creating or storing an application credential.
 
 ## Trust model
 

@@ -1,16 +1,25 @@
 import json
 import logging
+import time
+from threading import RLock
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import AIAgent, DataAsset, DecisionAudit, PolicyBundle, PolicyException, utc_now
-from app.services.policy_engine import evaluate_policies, evaluate_policy_definitions
+from app.services.policy_engine import (
+    PolicyMatch,
+    evaluate_policies,
+    evaluate_policy_definitions,
+    load_policies,
+)
 
 
 SENSITIVITY = {"Public": 0, "Internal": 1, "Confidential": 2, "Restricted": 3, "Unclassified": 2}
-POLICY_VERSION = "1.7.0"
+POLICY_VERSION = "1.8.0"
+_POLICY_CACHE: dict[tuple[int, str], tuple[float, str, list[dict]]] = {}
+_POLICY_CACHE_LOCK = RLock()
 
 
 def evaluate(
@@ -34,22 +43,11 @@ def evaluate(
         "action": action,
         "purpose": purpose,
     }
-    active_bundle = (
-        db.scalar(
-            select(PolicyBundle).where(
-                PolicyBundle.tenant_id == tenant_id,
-                PolicyBundle.status == "active",
-            )
-        )
-        if db
-        else None
+    policy_matches, policy_version = effective_policy_matches(
+        context,
+        db,
+        tenant_id,
     )
-    if active_bundle:
-        policy_matches = evaluate_policy_definitions(context, json.loads(active_bundle.definition_json))
-        policy_version = f"{active_bundle.name}:v{active_bundle.version}"
-    else:
-        policy_matches = evaluate_policies(context, settings.policy_directory)
-        policy_version = POLICY_VERSION
     for match in policy_matches:
         reasons.append(match.reason)
         controls.extend(match.controls)
@@ -120,6 +118,60 @@ def evaluate(
     }
 
 
+def effective_policy_matches(
+    context: dict,
+    db: Session | None,
+    tenant_id: str,
+) -> tuple[list[PolicyMatch], str]:
+    if not db:
+        return evaluate_policies(context, settings.policy_directory), POLICY_VERSION
+    policies, version = _effective_policy_definitions(db, tenant_id)
+    return evaluate_policy_definitions(context, policies), version
+
+
+def invalidate_policy_cache(tenant_id: str | None = None) -> None:
+    with _POLICY_CACHE_LOCK:
+        if tenant_id is None:
+            _POLICY_CACHE.clear()
+        else:
+            for key in [key for key in _POLICY_CACHE if key[1] == tenant_id]:
+                _POLICY_CACHE.pop(key, None)
+
+
+def _effective_policy_definitions(
+    db: Session,
+    tenant_id: str,
+) -> tuple[list[dict], str]:
+    now = time.monotonic()
+    cache_key = (id(db.get_bind()), tenant_id)
+    with _POLICY_CACHE_LOCK:
+        cached = _POLICY_CACHE.get(cache_key)
+        if cached and cached[0] > now:
+            return cached[2], cached[1]
+    active_bundle = db.scalar(
+        select(PolicyBundle)
+        .where(
+            PolicyBundle.tenant_id == tenant_id,
+            PolicyBundle.status == "active",
+        )
+        .order_by(PolicyBundle.activated_at.desc(), PolicyBundle.id.desc())
+        .limit(1)
+    )
+    if active_bundle:
+        definitions = json.loads(active_bundle.definition_json)
+        version = f"{active_bundle.name}:v{active_bundle.version}"
+    else:
+        definitions = load_policies(settings.policy_directory)
+        version = POLICY_VERSION
+    with _POLICY_CACHE_LOCK:
+        _POLICY_CACHE[cache_key] = (
+            now + max(0, settings.policy_cache_seconds),
+            version,
+            definitions,
+        )
+    return definitions, version
+
+
 def _matching_exception(
     db: Session,
     tenant_id: str,
@@ -130,11 +182,38 @@ def _matching_exception(
     purpose: str,
     matched_policy_ids: list[str],
 ) -> PolicyException | None:
+    policy_scope = PolicyException.policy_id.is_(None)
+    if matched_policy_ids:
+        policy_scope = or_(
+            policy_scope,
+            PolicyException.policy_id.in_(matched_policy_ids),
+        )
     candidates = db.scalars(
         select(PolicyException).where(
             PolicyException.tenant_id == tenant_id,
             PolicyException.active.is_(True),
             PolicyException.expires_at > utc_now(),
+            policy_scope,
+            or_(
+                PolicyException.agent_key.is_(None),
+                PolicyException.agent_key == agent_key,
+            ),
+            or_(
+                PolicyException.asset_id.is_(None),
+                PolicyException.asset_id == asset_id,
+            ),
+            or_(
+                PolicyException.destination.is_(None),
+                PolicyException.destination == destination,
+            ),
+            or_(
+                PolicyException.action.is_(None),
+                PolicyException.action == action,
+            ),
+            or_(
+                PolicyException.purpose.is_(None),
+                PolicyException.purpose == purpose,
+            ),
         )
     )
     for exception in candidates:

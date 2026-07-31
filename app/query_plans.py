@@ -41,6 +41,39 @@ QUERIES = {
         ORDER BY remediation_due_at
         LIMIT 1000
     """,
+    "runtime-receipts-subject": """
+        SELECT receipt_id, decision, policy_decision, risk_score, created_at
+        FROM runtime_decision_receipts
+        WHERE tenant_id = :tenant_id
+          AND subject_type = :runtime_subject_type
+          AND subject_id = :runtime_subject_id
+        ORDER BY created_at DESC
+        LIMIT 1000
+    """,
+    "runtime-receipts-signing": """
+        SELECT id, receipt_id, signing_profile, signing_attempts
+        FROM runtime_decision_receipts
+        WHERE signing_status = 'pending'
+          AND signing_available_at <= CURRENT_TIMESTAMP
+        ORDER BY created_at
+        LIMIT 100
+    """,
+    "runtime-receipts-retention": """
+        SELECT id, receipt_id, retention_until
+        FROM runtime_decision_receipts
+        WHERE retention_until < CURRENT_TIMESTAMP
+          AND signing_status NOT IN ('pending', 'signing')
+        ORDER BY retention_until
+        LIMIT 10000
+    """,
+    "ai-lineage-drift": """
+        SELECT event_id, relationship_id, source_type, target_type, observed_at
+        FROM ai_lineage_observations
+        WHERE tenant_id = :tenant_id
+          AND drift_detected = TRUE
+        ORDER BY observed_at DESC
+        LIMIT 1000
+    """,
 }
 
 
@@ -55,6 +88,8 @@ def capture_query_plans(database_url: str, tenant_id: str) -> dict:
         "source_type": "asset",
         "source_id": "1",
         "campaign_id": "00000000-0000-0000-0000-000000000000",
+        "runtime_subject_type": "ai_agent",
+        "runtime_subject_id": "example-agent",
     }
     plans = {}
     try:
