@@ -216,7 +216,9 @@ class EvidenceOut(BaseModel):
 
 class ConnectorScheduleCreate(BaseModel):
     connector_type: str = Field(
-        pattern="^(aws-s3|google-drive|github|gitlab|sharepoint|postgresql)$"
+        min_length=1,
+        max_length=80,
+        pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$",
     )
     account: str = Field(min_length=1, max_length=240)
     schedule_type: str = Field(default="interval", pattern="^(interval|cron)$")
@@ -334,6 +336,7 @@ class OwnershipCampaignCreate(BaseModel):
     description: str = Field(default="", max_length=2000)
     scope: dict = Field(default_factory=dict)
     due_at: datetime
+    escalation_policy_id: str | None = Field(default=None, max_length=36)
 
 
 class OwnershipAttestation(BaseModel):
@@ -367,6 +370,7 @@ class OwnershipCampaignScheduleCreate(BaseModel):
     cron_expression: str | None = Field(default=None, min_length=9, max_length=120)
     timezone: str = Field(default="UTC", min_length=1, max_length=120)
     maintenance_windows: list[dict] = Field(default_factory=list, max_length=20)
+    escalation_policy_id: str | None = Field(default=None, max_length=36)
     notification_endpoint_ids: list[str] = Field(default_factory=list, max_length=50)
     enabled: bool = True
 
@@ -382,6 +386,7 @@ class OwnershipCampaignScheduleUpdate(BaseModel):
     cron_expression: str | None = Field(default=None, min_length=9, max_length=120)
     timezone: str | None = Field(default=None, min_length=1, max_length=120)
     maintenance_windows: list[dict] | None = Field(default=None, max_length=20)
+    escalation_policy_id: str | None = Field(default=None, max_length=36)
     notification_endpoint_ids: list[str] | None = Field(default=None, max_length=50)
     next_run_at: datetime | None = None
 
@@ -390,3 +395,57 @@ class GovernanceEvidencePackageCreate(BaseModel):
     days: int = Field(default=30, ge=1, le=366)
     categories: list[str] = Field(default_factory=list, max_length=20)
     max_records: int = Field(default=10_000, ge=1, le=100_000)
+    signing_profile: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=120,
+        pattern=r"^[A-Za-z0-9_.-]+$",
+    )
+
+
+class GovernanceEvidencePackageVerify(BaseModel):
+    verification_profile: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=120,
+        pattern=r"^[A-Za-z0-9_.-]+$",
+    )
+
+
+class ConnectorCapabilityPolicyUpdate(BaseModel):
+    allowed_connectors: list[str] = Field(default_factory=list, max_length=200)
+    denied_connectors: list[str] = Field(default_factory=list, max_length=200)
+    allowed_content_access: list[str] = Field(
+        default_factory=lambda: ["metadata-only"],
+        min_length=1,
+        max_length=3,
+    )
+    allowed_egress_hosts: list[str] = Field(default_factory=list, max_length=500)
+    deny_destructive_actions: bool = True
+    require_incremental_cursor: bool = False
+    require_opaque_cursor: bool = True
+    max_declared_permissions: int = Field(default=100, ge=1, le=1000)
+
+
+class OwnershipEscalationStage(BaseModel):
+    key: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_.-]+$")
+    offset_hours: int = Field(ge=-8760, le=8760)
+    recipient: str = Field(pattern="^(owner|data-owner|administrator)$")
+    endpoint_ids: list[str] = Field(default_factory=list, max_length=50)
+
+
+class OwnershipEscalationPolicyCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    description: str = Field(default="", max_length=2000)
+    stages: list[OwnershipEscalationStage] = Field(min_length=1, max_length=20)
+    enabled: bool = True
+
+
+class OwnershipEscalationPolicyUpdate(BaseModel):
+    description: str | None = Field(default=None, max_length=2000)
+    stages: list[OwnershipEscalationStage] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=20,
+    )
+    enabled: bool | None = None

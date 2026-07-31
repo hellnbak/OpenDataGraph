@@ -1,6 +1,6 @@
 # Workload Identity Federation
 
-OpenDataGraph v1.6 accepts short-lived signed workload tokens without creating or storing an application credential.
+OpenDataGraph v1.7 accepts short-lived signed workload tokens without creating or storing an application credential.
 
 ## Trust model
 
@@ -45,4 +45,4 @@ Do not send multiple authentication mechanisms in one request. Human OIDC bearer
 - Monitor rejected issuer, signature, audience, and lifetime validation without logging token values.
 - Rotate provider signing keys through JWKS and retain overlap only for the minimum required period.
 
-OpenDataGraph validates externally issued tokens; it does not issue, exchange, or refresh workload credentials.
+Inbound authentication validates externally issued tokens and does not issue or refresh them. Separately configured outbound [cloud workload exchange](WORKLOAD_EXCHANGE.md) can exchange a referenced subject token for temporary provider credentials without persisting either token.

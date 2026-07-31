@@ -1,6 +1,6 @@
 # Performance Qualification
 
-OpenDataGraph includes deterministic benchmark and bounded read-only soak tools. No certified throughput, latency, estate-size, or concurrency numbers are bundled because results depend on database sizing, indexes, network placement, data distribution, worker capacity, OpenSearch, and object storage.
+OpenDataGraph includes deterministic benchmark, comparative baseline, and bounded read-only soak tools. No certified throughput, latency, estate-size, or concurrency numbers are bundled because results depend on database sizing, indexes, network placement, data distribution, worker capacity, OpenSearch, and object storage.
 
 ## Benchmark profiles
 
@@ -34,7 +34,7 @@ python -m app.benchmark \
 
 The benchmark uses a unique synthetic tenant and deletes its graph and catalog rows after measurement. It may create missing OpenDataGraph tables, so never point it at production.
 
-Use `python -m app.query_plans` for non-executing PostgreSQL `EXPLAIN (FORMAT JSON)` capture. See [PostgreSQL query plans](QUERY_PLANS.md).
+Use `python -m app.query_plans` for non-executing PostgreSQL `EXPLAIN (FORMAT JSON)` capture. Convert reports and documented topologies into regression budgets with `python -m app.benchmark_baselines`. See [PostgreSQL query plans](QUERY_PLANS.md) and [Performance baselines](PERFORMANCE_BASELINES.md).
 
 ## Read-only soak
 

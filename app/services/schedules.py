@@ -31,6 +31,7 @@ def create_schedule(
     maintenance_windows: list[dict] | None = None,
 ) -> ConnectorSchedule:
     from app.services.jobs import validate_job_payload
+    from connectors.registry import connector_registration, enforce_connector_policy
 
     normalized_payload = {
         "connector_type": connector_type,
@@ -38,6 +39,8 @@ def create_schedule(
         **payload,
     }
     validate_job_payload("connector.scan", normalized_payload)
+    registration = connector_registration(connector_type)
+    enforce_connector_policy(db, tenant_id, registration.manifest)
     maintenance_windows = maintenance_windows or []
     validate_schedule_definition(
         schedule_type,

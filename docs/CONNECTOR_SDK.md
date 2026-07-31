@@ -5,6 +5,8 @@ The connector SDK defines:
 - `AssetRecord`: normalized metadata for a catalog asset
 - `ScanBatch`: records, next cursor, and completion state
 - `Connector`: a provider adapter with `source`, `account`, and `scan`
+- `ConnectorCapabilities`: declared content, cursor, rate-limit, timestamp, exposure, and mutation behavior
+- `ConnectorManifest`: versioned permissions, egress, capabilities, SDK version, and canonical digest
 
 ## Normalized record
 
@@ -21,6 +23,14 @@ Cursor values are opaque provider state. Applications and workers must not parse
 ## Run and job behavior
 
 Synchronous and queued scans produce the same connector-run records. Queued scans additionally produce a durable job record containing non-secret configuration, attempts, state, safe error, and final result.
+
+Every run records connector version, manifest digest, and the tenant capability-policy version used for execution. The registry enforces policy when work is accepted and again when a worker builds the connector.
+
+## Registration and conformance
+
+Built-in adapters register through `ConnectorRegistration`. External packages can expose the `opendatagraph.connectors` Python entry-point group, but only names in `ODG_CONNECTOR_PLUGIN_ALLOWLIST` load. Plugins are trusted in-process code, not sandboxed adapters.
+
+Use `python -m connectors.conformance` to inspect installed manifest declarations. Deterministic adapter tests should also call `run_connector_conformance`. See [Connector conformance and capability policy](CONNECTOR_CONFORMANCE.md).
 
 ## Adapter requirements
 

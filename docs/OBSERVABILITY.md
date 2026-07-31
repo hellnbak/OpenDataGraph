@@ -1,6 +1,6 @@
 # Observability
 
-OpenDataGraph v1.6 exposes health, readiness, metrics, structured logs, delivery dashboards, governance SLA and posture analytics, lifecycle reporting, and optional traces.
+OpenDataGraph v1.7 exposes health, readiness, metrics, structured logs, delivery dashboards, governance SLA, posture and ownership trend analytics, lifecycle reporting, and optional traces.
 
 ## Endpoints
 

@@ -59,6 +59,7 @@ def queue_integration_event(
     payload: dict,
     created_by: str,
     endpoint_ids: set[str] | None = None,
+    idempotency_key: str | None = None,
 ) -> list[IntegrationDelivery]:
     from app.services.jobs import enqueue_job
 
@@ -78,16 +79,30 @@ def queue_integration_event(
         events = json.loads(endpoint.events_json or "[]")
         if endpoint_ids is None and "*" not in events and event_type not in events:
             continue
-        delivery = IntegrationDelivery(
-            tenant_id=tenant_id,
-            delivery_id=str(uuid4()),
-            endpoint_id=endpoint.endpoint_id,
-            event_type=event_type,
-            payload_json=payload_json,
-        )
-        db.add(delivery)
-        db.commit()
-        db.refresh(delivery)
+        delivery = None
+        if idempotency_key:
+            delivery = db.scalar(
+                select(IntegrationDelivery).where(
+                    IntegrationDelivery.tenant_id == tenant_id,
+                    IntegrationDelivery.endpoint_id == endpoint.endpoint_id,
+                    IntegrationDelivery.idempotency_key == idempotency_key,
+                )
+            )
+        if not delivery:
+            delivery = IntegrationDelivery(
+                tenant_id=tenant_id,
+                delivery_id=str(uuid4()),
+                endpoint_id=endpoint.endpoint_id,
+                idempotency_key=idempotency_key,
+                event_type=event_type,
+                payload_json=payload_json,
+            )
+            db.add(delivery)
+            db.commit()
+            db.refresh(delivery)
+        if delivery.status == "delivered":
+            deliveries.append(delivery)
+            continue
         enqueue_job(
             db,
             tenant_id=tenant_id,
@@ -113,6 +128,14 @@ def deliver_integration(db: Session, tenant_id: str, delivery_id: str) -> dict:
     )
     if not delivery:
         raise ValueError("Integration delivery not found")
+    if delivery.status == "delivered":
+        return {
+            "delivery_id": delivery.delivery_id,
+            "endpoint_id": delivery.endpoint_id,
+            "status": delivery.status,
+            "response_code": delivery.response_code,
+            "idempotent": True,
+        }
     endpoint = db.scalar(
         select(IntegrationEndpoint).where(
             IntegrationEndpoint.tenant_id == tenant_id,

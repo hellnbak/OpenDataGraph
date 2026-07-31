@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.7.0 - 2026-07-31
+
+### Added
+
+- Version 2 governance evidence packages with canonical manifests, per-section digests, Ed25519, AWS KMS, and Sigstore signing, separate verification trust profiles, API verification, and an offline verifier
+- Connector SDK v2 manifests, deterministic conformance checks, a central built-in and allowlisted plugin registry, manifest-digest run provenance, and deployment plus tenant capability policy enforcement
+- AWS, Azure, and Google Cloud workload exchange profiles with referenced subject tokens, bounded temporary credentials, safe test responses, and multiple projected Kubernetes token audiences
+- Governed Google Cloud Storage and Azure Blob graph export adapters plus optional AWS exchange credentials for S3 and KMS operations
+- Durable ownership escalation policies, idempotent endpoint delivery, stale-claim recovery, event inspection, and bounded completion, response-time, remediation, and overdue trends
+- Performance baseline capture and comparison with configurable latency and throughput budgets, structural read-only query-plan fingerprints, and documented reference topologies
+- Alembic upgrade from v1.6 and deterministic tests for v1.7 assurance and extensibility controls
+
+### Changed
+
+- Updated application, console, chart, policy, documentation, deployment defaults, and release packaging versions to `1.7.0`
+- Extended governance packages, connector jobs and runs, graph export sinks, ownership campaigns and schedules, integration deliveries, worker scheduling, and deployment token projection without removing prior behavior
+- Preserved all prior catalog, connector, classification, policy, AI activity, identity, evidence, integration, graph, search, job, ownership, governance, observability, and scale-qualification capabilities
+
 ## 1.6.0 - 2026-07-31
 
 ### Added

@@ -17,6 +17,7 @@ from connectors.github import GitHubConnector
 from connectors.gitlab import GitLabConnector
 from connectors.s3 import S3Connector
 from connectors.sharepoint import SharePointConnector
+from connectors.registry import govern_connector
 from .classification import classify, heuristic_classify
 from .config import settings
 from .database import Base, SessionLocal, engine, get_db
@@ -80,6 +81,7 @@ from .v13 import router as v13_router
 from .v14 import router as v14_router
 from .v15 import router as v15_router
 from .v16 import router as v16_router
+from .v17 import router as v17_router
 
 
 async def enrich_asset(asset: DataAsset, deterministic: bool = False) -> None:
@@ -138,6 +140,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifespan)
 configure_observability(app)
+app.include_router(v17_router)
 app.include_router(v16_router)
 app.include_router(v15_router)
 app.include_router(v14_router)
@@ -515,6 +518,12 @@ async def scan_s3(
             req.region,
             before_request=provider_request_guard(db, principal.tenant_id, "aws-s3"),
         )
+        connector, _decision = govern_connector(
+            connector,
+            "aws-s3",
+            db,
+            principal.tenant_id,
+        )
         return await ingest_connector(
             db,
             connector,
@@ -541,6 +550,12 @@ async def scan_google_drive(
             impersonate_user=req.impersonate_user,
             drive_id=req.drive_id,
             before_request=provider_request_guard(db, principal.tenant_id, "google-drive"),
+        )
+        connector, _decision = govern_connector(
+            connector,
+            "google-drive",
+            db,
+            principal.tenant_id,
         )
         return await ingest_connector(
             db,
@@ -637,6 +652,12 @@ async def scan_connector(
             )
         else:
             raise HTTPException(404, "Supported connector types: github, gitlab, sharepoint")
+        connector, _decision = govern_connector(
+            connector,
+            connector_type,
+            db,
+            principal.tenant_id,
+        )
         return await ingest_connector(
             db,
             connector,

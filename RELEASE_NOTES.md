@@ -1,69 +1,69 @@
-# OpenDataGraph v1.6.0
+# OpenDataGraph v1.7.0
 
-OpenDataGraph v1.6 adds ecosystem and scale controls: recurring ownership campaigns, short-lived workload federation, pluggable governed export sinks, governance evidence packages, PostgreSQL catalog coverage, and larger-estate qualification tooling.
+OpenDataGraph v1.7 adds assurance and extensibility controls: cryptographically signed governance evidence, connector capability governance, major-cloud workload exchange, Google Cloud Storage and Azure Blob export sinks, ownership escalation and trend analytics, and comparative performance baselines.
 
-All v1.1 through v1.5 capabilities remain part of the platform. The README lists cumulative platform capabilities separately from release-specific additions.
+All v1.1 through v1.6 capabilities remain part of the platform. The README lists cumulative platform capabilities separately from release-specific additions.
 
-## Ownership automation
+## Signed governance evidence
 
-Data owners can schedule bounded ownership campaigns on fixed intervals or five-field cron calendars with IANA time zones and maintenance windows. Each due occurrence enqueues an idempotent `ownership.campaign.launch` job that creates one campaign snapshot with a configured due period and asset limit.
+Governance evidence package format version 2 adds a canonical manifest, whole-payload SHA-256, per-section digests, generator identity, and an assurance envelope. Workers can sign with mounted Ed25519 keys, AWS KMS, or Sigstore keyless identities. Signing credentials remain external references.
 
-Schedules can target selected enabled integration endpoints. Campaign launch, remediation-required, and completion events also support ordinary event subscriptions.
+Verification first recomputes payload and section digests, then validates the signature, then evaluates the signer against a separate trust profile. The API and `python -m app.evidence_verify` report cryptographic validity separately from configured trust. Existing storage-level digest checks remain in place.
 
-## Workload identity federation
+## Connector capability governance
 
-External automation can authenticate with `X-Workload-Identity-Token`. Each configured provider fixes the tenant and maximum platform role; caller claims cannot elevate either boundary. Tokens require asymmetric signature, exact issuer and audience, expiry and issued-at claims, a valid subject, and a configured lifetime of no more than one hour.
+Connector SDK v2 introduces versioned manifests for permissions, egress, content access, pagination, cursor behavior, rate-limit handling, timestamp provenance, public-access interpretation, and destructive-action declarations. Runs record connector version, manifest digest, and capability policy version.
 
-Workload tokens are validated per request and never stored. Existing API keys, human OIDC bearer tokens, and application-managed service accounts remain available.
+A central registry preserves all built-in connectors and supports explicitly allowlisted Python entry-point plugins. Deployment policy and versioned tenant policy can deny connector types, content-access levels, egress hosts, destructive behavior, non-incremental or non-opaque cursors, and oversized permission declarations. `python -m connectors.conformance` validates installed manifests without provider calls.
 
-## Export sink adapters
+Plugins remain trusted in-process code and require ordinary software supply-chain review; capability policy is not a sandbox.
 
-Asynchronous graph exports now dispatch through a sink registry. Existing allowlisted S3 sinks remain compatible. HTTPS sinks require an exact host allowlist, reject credentials, query parameters, fragments, and redirects, and read a mounted short-lived bearer token only when the worker pushes an export.
+## Cloud workload exchange and export sinks
 
-HTTPS sinks are push-only and cannot be downloaded through OpenDataGraph. Local and S3-backed export artifacts remain integrity-checkable and retrievable.
+Named workload exchange profiles read a referenced subject token only when needed and issue temporary AWS STS, Azure federated client, or Google Cloud STS credentials for at most one hour. Subject and returned credentials are never persisted or returned by profile-test APIs.
 
-## Governance analytics and evidence packages
+S3 sinks can use an AWS exchange profile. New `gs://` and `azblob://` adapters require exact destination allowlists and matching Google Cloud or Azure exchange profiles. Existing HTTPS push and runtime AWS credential-chain behavior remain compatible. Kubernetes deployments can project multiple audience-specific service-account tokens to API and worker replicas.
 
-The governance analytics API reports review aging and SLA compliance, ownership remediation posture, evidence and disposition activity, service-account credential posture, and policy decision counts.
+## Ownership escalation and trends
 
-Auditors can enqueue metadata-only governance evidence packages for a bounded time window and record limit. Packages can include review, ownership, evidence-integrity, policy-bundle, service-account, and graph-export metadata. They exclude evidence object bytes, policy definitions, governance details, connector secrets, prompts, and responses. Packages are stored locally or in S3-compatible storage with SHA-256 integrity.
+Data owners can attach a versioned escalation policy to manual or scheduled ownership campaigns. Each policy has one to twenty unique reminder or overdue stages relative to campaign due time, a recipient class, and optional explicit integration destinations.
 
-## PostgreSQL catalog connector
+Stage events have durable claim, retry, error, delivery-count, and idempotency state. Repeated scheduler passes cannot create duplicate endpoint deliveries. Auditors can inspect escalation events and bounded daily trends for campaign completion, assignment response, remediation resolution, active overdue campaigns, and nonresponses.
 
-The new queued and scheduled `postgresql` connector inventories visible tables and views through `information_schema` and `pg_catalog`. It records schema, table type, estimated rows, owner, and column count with opaque bounded pagination. It does not query table rows, infer public exposure, or claim a source modification timestamp.
+## Performance baselines
 
-Use a secret reference containing a PostgreSQL DSN. Grant only `CONNECT`, schema `USAGE`, and visibility required for approved catalog objects; data-table `SELECT` is not required.
+`python -m app.benchmark_baselines` captures benchmark results with a documented non-secret topology and optional structural fingerprints from read-only PostgreSQL plans. Comparisons enforce configurable latency and throughput regression budgets and can optionally fail on plan drift.
 
-## Scale qualification
-
-`python -m app.benchmark` now includes `local`, `postgres-small`, and `postgres-large` profiles. External database profiles require PostgreSQL and an explicit fixture-write acknowledgement, use a unique synthetic tenant, and remove their fixture rows after measurement.
-
-`python -m app.query_plans` captures read-only `EXPLAIN (FORMAT JSON)` output for catalog, graph, governance, and ownership queries. It never uses `ANALYZE`. Composite tenant/status/time indexes accompany the new migration.
-
-These tools provide comparative evidence, not certified capacity claims.
+Reference topology documents cover local, small PostgreSQL, and large PostgreSQL qualification. Baselines support controlled comparison; they do not certify production capacity.
 
 ## Upgrade
 
 1. Stop API and worker processes.
-2. Create and verify database, evidence, graph-export, and governance-package backups as applicable.
-3. Review workload identity providers, campaign schedules, notification destinations, export sink allowlists, mounted identity tokens, package storage, and PostgreSQL connector permissions.
+2. Create and verify database, evidence, graph-export, and governance-package backups.
+3. Review signing and verification profiles, connector plugin provenance and capability policy, workload exchange trust, destination allowlists, projected subject tokens, escalation routing, and regression budgets.
 4. Run `alembic upgrade head`.
-5. Start the API and workers from the same v1.6 image.
-6. Verify `/health`, `/ready`, the Alembic head, tenant isolation, one scheduled ownership launch, one short-lived workload token, one enabled export sink, one evidence package, and one bounded PostgreSQL catalog scan.
+5. Start migration, API, and worker roles from the same v1.7 image and plugin set.
+6. Verify `/health`, `/ready`, Alembic revision `20260731_0006`, and tenant isolation.
+7. Generate and independently verify one signed synthetic governance package.
+8. Inspect every connector manifest and exercise one policy denial.
+9. Test each enabled exchange profile and export sink with an approved synthetic destination.
+10. Launch one synthetic campaign with a due escalation stage and confirm idempotent delivery.
+11. Capture and compare one representative performance baseline.
 
-Downgrades are not supported. Restore the verified pre-upgrade state if rollback is required.
+Downgrades are not supported. Restore the verified pre-upgrade database and object-storage state if rollback is required. Remote export sink objects require their own governed cleanup.
 
 ## Compatibility and limitations
 
-- Existing APIs and v1.1 through v1.5 workflows remain available.
-- Ownership campaign schedules snapshot matching assets at launch; later assets require a later occurrence or campaign.
-- Scheduled campaign jobs fail safely when a scope matches no assets and follow normal bounded retry behavior.
-- Workload providers assign a fixed tenant and role. Dynamic tenant or role trust from workload claims is intentionally unsupported.
-- HTTPS export sinks require a mounted token under an approved secret-file root and do not follow redirects.
-- Governance packages contain governed metadata, not evidence object content or complete audit-source records.
-- PostgreSQL public exposure and modification timestamps are not inferred; metadata explicitly records those limits.
-- PostgreSQL benchmark profiles write synthetic fixtures and must run only against an approved isolated qualification database.
+- Existing APIs and v1.1 through v1.6 workflows remain available.
+- Unsigned packages remain readable unless `ODG_GOVERNANCE_PACKAGE_SIGNING_REQUIRED=true`; they cannot become cryptographically trusted after creation without producing a new package.
+- Sigstore signing and verification require a compatible external `cosign` executable. Bundles are verified offline against pinned certificate identity and issuer.
+- Plugin packages execute in process and must be installed identically on API and worker images.
+- Workload exchange profiles support AWS, Azure, and Google Cloud only. Each exchange is performed when credentials are requested; no application token cache is added in v1.7.
+- Cloud export adapters are write-only. Destination retention, immutability, deletion, and independent integrity checks remain external responsibilities.
+- Escalation recipients are routing metadata delivered through configured integration endpoints; OpenDataGraph does not send email directly.
+- Trend windows are bounded summaries of OpenDataGraph campaign records, not proof of external entitlement review.
+- Performance baselines are environment-specific comparative evidence, not certified throughput or capacity.
 
 ## License
 
-OpenDataGraph v1.6.0 is source-available under `FSL-1.1-ALv2`. The license permits internal use, non-commercial education and research, and qualifying professional services while prohibiting competing commercial products and services. This release becomes available under Apache License 2.0 on July 31, 2028. Earlier releases retain the terms distributed with those releases.
+OpenDataGraph v1.7.0 is source-available under `FSL-1.1-ALv2`. The license permits internal use, non-commercial education and research, and qualifying professional services while prohibiting competing commercial products and services. This release becomes available under Apache License 2.0 on July 31, 2028. Earlier releases retain the terms distributed with those releases.

@@ -1,6 +1,6 @@
 # Authentication and Tenancy
 
-OpenDataGraph v1.6 binds each API-key, service account, validated human OIDC principal, or short-lived workload identity to a role and tenant.
+OpenDataGraph v1.7 binds each API-key, service account, validated human OIDC principal, or short-lived workload identity to a role and tenant.
 
 ## Local mode
 

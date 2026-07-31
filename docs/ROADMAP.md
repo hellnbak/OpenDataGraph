@@ -68,3 +68,5 @@ Delivered in v1.6.0 with metadata-only PostgreSQL catalog coverage as the first 
 - Additional governed export adapters selected from deployment requirements
 - Campaign escalation policies, reminders, and ownership analytics trends
 - PostgreSQL benchmark baselines captured across documented reference topologies
+
+Delivered in v1.7.0 with Ed25519, AWS KMS, and Sigstore evidence assurance; connector SDK v2 conformance and capability policy; AWS, Azure, and Google Cloud workload exchange; governed GCS and Azure Blob sinks; ownership escalation trends; and comparative performance baselines.

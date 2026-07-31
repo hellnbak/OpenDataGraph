@@ -49,6 +49,8 @@ The `search` parameter uses OpenSearch when configured and database fallback oth
 - `PATCH|DELETE /api/v1/connectors/schedules/{schedule_id}`
 - `GET /api/v1/connectors/rate-limits`
 - `PUT /api/v1/connectors/rate-limits/{provider}`
+- `GET /api/v1/connectors/capabilities`
+- `GET|PUT /api/v1/connectors/capability-policy`
 - `GET /api/v1/jobs`
 - `GET /api/v1/jobs/{job_id}`
 - `POST /api/v1/jobs/{job_id}/cancel`
@@ -121,6 +123,8 @@ Creation and rotation return a clear credential exactly once. Read responses nev
 - `POST|GET /api/v1/governance/evidence-packages`
 - `GET /api/v1/governance/evidence-packages/{package_id}`
 - `GET /api/v1/governance/evidence-packages/{package_id}/download`
+- `GET /api/v1/governance/evidence-signing`
+- `POST /api/v1/governance/evidence-packages/{package_id}/verify`
 - `POST|GET /api/v1/ownership/campaigns`
 - `GET /api/v1/ownership/campaigns/{campaign_id}`
 - `POST /api/v1/ownership/campaigns/{campaign_id}/launch`
@@ -130,10 +134,16 @@ Creation and rotation return a clear credential exactly once. Read responses nev
 - `POST /api/v1/ownership/assignments/{assignment_id}/resolve`
 - `POST|GET /api/v1/ownership/schedules`
 - `PATCH|DELETE /api/v1/ownership/schedules/{schedule_id}`
+- `POST|GET /api/v1/ownership/escalation-policies`
+- `PATCH /api/v1/ownership/escalation-policies/{policy_id}`
+- `GET /api/v1/ownership/escalation-events`
+- `GET /api/v1/ownership/analytics/trends`
 
 ## Authentication
 
 - `GET /api/v1/auth/configuration`
+- `GET /api/v1/workload-identity/exchange-profiles`
+- `POST /api/v1/workload-identity/exchange-profiles/{profile_name}/test`
 
 When authentication is enabled, send a tenant-bound key in `X-API-Key`, a service-account credential in `X-Service-Account-Key`, a signed human bearer token from a configured OIDC provider, or a short-lived signed token in `X-Workload-Identity-Token`. Workload providers fix the tenant and role. Data-bearing APIs never accept tenant selection from the request.
 
