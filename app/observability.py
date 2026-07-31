@@ -26,6 +26,15 @@ JOBS = Counter(
     "Background job outcomes",
     ["job_type", "status"],
 )
+AUTHORIZATION_DECISIONS = Counter(
+    "odg_runtime_authorization_decisions_total",
+    "Runtime authorization decisions",
+    ["mode", "policy_decision", "decision"],
+)
+AUTHORIZATION_EVALUATION = Histogram(
+    "odg_runtime_authorization_evaluation_seconds",
+    "Runtime authorization policy evaluation time",
+)
 
 
 class JsonFormatter(logging.Formatter):

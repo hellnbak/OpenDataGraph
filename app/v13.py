@@ -832,6 +832,9 @@ def _activate_policy_bundle(db: Session, bundle: PolicyBundle, tenant_id: str) -
     bundle.activated_at = now
     bundle.retired_at = None
     db.commit()
+    from app.services.policy import invalidate_policy_cache
+
+    invalidate_policy_cache(tenant_id)
     db.refresh(bundle)
 
 

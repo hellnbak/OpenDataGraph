@@ -1,6 +1,6 @@
 # Governance Analytics and Evidence Packages
 
-OpenDataGraph v1.7 provides tenant-scoped governance posture analytics and asynchronous metadata-only evidence packages with optional cryptographic signing and independent trust verification.
+OpenDataGraph v1.8 provides tenant-scoped governance posture analytics and asynchronous metadata-only evidence packages with optional cryptographic signing and independent trust verification.
 
 ## Analytics
 
@@ -11,6 +11,7 @@ OpenDataGraph v1.7 provides tenant-scoped governance posture analytics and async
 - evidence creation, legal holds, and disposition throughput;
 - active service accounts and credentials expiring within 30 days;
 - policy decision counts for the selected window.
+- runtime authorization permit and deny counts, receipt signing state, and AI lineage drift events.
 
 The window is bounded from 1 through 366 days. Current open and overdue posture is included alongside windowed activity.
 
@@ -24,10 +25,12 @@ The window is bounded from 1 through 366 days. Current open and overdue posture 
 - `policies`
 - `service-accounts`
 - `graph-exports`
+- `runtime-decisions`
+- `ai-lineage`
 
 An empty category list includes every category. Packages include a versioned canonical manifest, analytics snapshot, bounded records, record count, truncation state, payload digest, and per-section digests. A request may select a named signing profile.
 
-Packages intentionally exclude evidence object bytes, filenames and storage locations, policy definitions, review detail payloads, ownership identities, connector secrets, API credentials, prompts, responses, and source-system content.
+Packages intentionally exclude evidence object bytes, filenames and storage locations, policy definitions, raw AuthZEN properties or context, review detail payloads, ownership identities, connector secrets, API credentials, prompts, responses, and source-system content.
 
 ## Storage and integrity
 

@@ -19,6 +19,16 @@ class Settings:
     version = VERSION
     environment = os.getenv("ODG_ENVIRONMENT", "development")
     database_url = os.getenv("ODG_DATABASE_URL", "sqlite:///./opendatagraph.db")
+    database_pool_size = _integer("ODG_DATABASE_POOL_SIZE", 10)
+    database_max_overflow = _integer("ODG_DATABASE_MAX_OVERFLOW", 20)
+    database_pool_timeout_seconds = _integer(
+        "ODG_DATABASE_POOL_TIMEOUT_SECONDS",
+        30,
+    )
+    database_pool_recycle_seconds = _integer(
+        "ODG_DATABASE_POOL_RECYCLE_SECONDS",
+        1800,
+    )
     auto_create_schema = _boolean("ODG_AUTO_CREATE_SCHEMA", database_url.startswith("sqlite"))
     ollama_url = os.getenv("ODG_OLLAMA_URL", "http://host.docker.internal:11434")
     ollama_model = os.getenv("ODG_OLLAMA_MODEL", "qwen2.5:3b")
@@ -59,6 +69,36 @@ class Settings:
     )
     service_account_stale_days = _integer("ODG_SERVICE_ACCOUNT_STALE_DAYS", 30)
     policy_directory = os.getenv("ODG_POLICY_DIRECTORY", "policies")
+    policy_cache_seconds = _integer("ODG_POLICY_CACHE_SECONDS", 5)
+    public_base_url = os.getenv("ODG_PUBLIC_BASE_URL", "").rstrip("/")
+    runtime_authorization_mode = os.getenv(
+        "ODG_RUNTIME_AUTHORIZATION_MODE",
+        "enforce",
+    ).lower()
+    runtime_authorization_batch_max = _integer(
+        "ODG_RUNTIME_AUTHORIZATION_BATCH_MAX",
+        100,
+    )
+    runtime_receipt_retention_days = _integer(
+        "ODG_RUNTIME_RECEIPT_RETENTION_DAYS",
+        90,
+    )
+    runtime_receipt_signing_profile = os.getenv(
+        "ODG_RUNTIME_RECEIPT_SIGNING_PROFILE",
+        "",
+    )
+    runtime_receipt_signing_batch_size = _integer(
+        "ODG_RUNTIME_RECEIPT_SIGNING_BATCH_SIZE",
+        100,
+    )
+    runtime_receipt_signing_max_attempts = _integer(
+        "ODG_RUNTIME_RECEIPT_SIGNING_MAX_ATTEMPTS",
+        3,
+    )
+    runtime_receipt_purge_batch_size = _integer(
+        "ODG_RUNTIME_RECEIPT_PURGE_BATCH_SIZE",
+        10_000,
+    )
     search_backend = os.getenv("ODG_SEARCH_BACKEND", "database").lower()
     opensearch_url = os.getenv("ODG_OPENSEARCH_URL", "")
     opensearch_index_prefix = os.getenv("ODG_OPENSEARCH_INDEX_PREFIX", "opendatagraph")

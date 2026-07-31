@@ -2,7 +2,7 @@
 
 ## Supported version
 
-Only the latest Assurance and Extensibility Preview release receives security fixes.
+Only the latest Runtime Governance and Scale Preview release receives security fixes.
 
 ## Reporting
 
@@ -10,7 +10,7 @@ Report suspected vulnerabilities through a monitored private security contact. D
 
 ## Deployment warning
 
-OpenDataGraph v1.7 adds signed governance packages, connector plugins and capability policy, cloud workload exchange, additional export sinks, ownership escalation, and regression baselines, but it remains a preview. Do not expose it directly to the public internet or connect sensitive production sources without TLS, identity-aware ingress, external secret management, network restrictions, tested backups, centralized telemetry, and reviewed identity, signing, retention, ownership, export, package, connector, and integration configuration.
+OpenDataGraph v1.8 adds runtime authorization, durable decision receipts, deferred signing, governed MCP access, AI resource registration, lineage drift, and scale qualification, but it remains a preview. Do not expose it directly to the public internet or connect sensitive production sources without TLS, identity-aware ingress, external secret management, network restrictions, tested backups, centralized telemetry, and reviewed identity, runtime mode, receipt, signing, retention, ownership, export, package, connector, and integration configuration.
 
 ## Credentials
 
@@ -26,6 +26,7 @@ OpenDataGraph v1.7 adds signed governance packages, connector plugins and capabi
 - Fix each workload identity provider to one tenant and least-privileged role, require tokens no longer than one hour, and never log `X-Workload-Identity-Token`.
 - Keep outbound workload exchange subject tokens under approved secret roots, use one destination-specific audience and role per profile, enforce a maximum one-hour credential lifetime, and never log exchange response bodies.
 - Keep evidence signing keys outside configuration and databases. Separate signing authority from verification trust and rotate retained public trust material according to package retention.
+- Keep runtime receipt signing keys outside configuration and databases. Treat authorization identifiers and reasons as sensitive metadata, and never place prompts, responses, content, tokens, or credentials in AuthZEN identifiers or properties.
 - Store one-time service-account keys directly in approved secret management, assign the least-privileged role, monitor expiry and inactivity, and use bounded rotation overlap.
 - Treat Splunk HEC references as authorization tokens and do not reuse webhook HMAC secrets.
 - Rotate credentials after suspected disclosure.
@@ -34,7 +35,7 @@ OpenDataGraph v1.7 adds signed governance packages, connector plugins and capabi
 
 - Bind every API key to a single `tenant_id`.
 - Never trust a caller-supplied tenant header or request field.
-- Preserve tenant filters on object lookup, listing, idempotency, graph traversal and export, jobs, evidence retrieval and disposition, integration replay, service accounts, governance reviews and packages, ownership campaigns and schedules, and identity workflows.
+- Preserve tenant filters on object lookup, listing, idempotency, runtime receipts, AI resources and lineage, graph traversal and export, jobs, evidence retrieval and disposition, integration replay, service accounts, governance reviews and packages, ownership campaigns and schedules, and identity workflows.
 - Use separate databases for strict regulatory or cryptographic isolation requirements.
 
 ## Data handling

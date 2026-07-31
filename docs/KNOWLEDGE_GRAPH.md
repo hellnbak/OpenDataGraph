@@ -2,6 +2,8 @@
 
 OpenDataGraph stores directed, tenant-scoped relationships in the primary relational database.
 
+v1.8 also projects declared and observed AI resource relationships into this graph while retaining expected state and idempotent observation history in dedicated relational tables.
+
 Common relationships include:
 
 ```text
@@ -12,6 +14,9 @@ lineage-run -> instance_of -> lineage-job
 dataset -> input_to -> lineage-job
 lineage-job -> produces -> dataset
 dataset -> transforms_into -> dataset
+model -> retrieves_from -> vector-index
+ai-system -> calls -> tool
+model -> served_by -> endpoint
 ```
 
 Each edge contains tenant, source type and ID, relationship, target type and ID, bounded JSON metadata, and creation time. Composite indexes cover tenant/source, tenant/target, and tenant/relationship lookups for larger estates.
@@ -35,6 +40,8 @@ Path results preserve each underlying edge and explain how the current node reac
 `relationships` optionally filters edge types. `limit` is bounded by `ODG_GRAPH_MAX_EXPORT_EDGES`. CSV and GraphML responses use attachment headers. Export never includes another tenant's edges.
 
 The relational design avoids a mandatory graph database. Bounded traversal and export are not a replacement for external graph analytics at unbounded scale. See [OpenLineage](OPENLINEAGE.md).
+
+AI lineage drift means an observed relationship was not active and expected. It is not inferred from graph reachability and is not proof of malicious activity. See [AI resource lineage](AI_RESOURCE_LINEAGE.md).
 
 ## Asynchronous export
 

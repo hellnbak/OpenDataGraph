@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.8.0 - 2026-07-31
+
+### Added
+
+- OpenID AuthZEN Authorization API 1.0-compatible single and bounded batch access evaluation endpoints with PDP metadata and standard batch short-circuit semantics
+- Observe, warn, and enforce runtime modes with policy obligations, request identifiers, idempotency protection, metadata-only append-only receipts, bounded retention, and tenant-scoped receipt APIs
+- Deferred Ed25519, AWS KMS, and Sigstore runtime receipt signing through the durable worker loop, separate trust verification, retry recovery, and signing telemetry
+- First-class AI resources for models, prompts, vector indexes, tools, endpoints, and AI systems, plus expected relationships, idempotent observations, drift detection, and graph projection
+- Governed MCP context access and explicit runtime authorization and receipt tools
+- Runtime authorization and batch-write benchmark operations, lean high-write indexes, receipt and lineage query-plan capture, configurable PostgreSQL pools, policy-definition caching, request-local batch lookup reuse, and high-volume retention cleanup
+- Runtime authorization and AI lineage governance analytics and evidence-package categories
+- Alembic upgrade from v1.7 and deterministic tests for v1.8 runtime governance, signing, idempotency, lineage drift, indexes, and compatibility
+
+### Changed
+
+- Updated application, console, chart, connector manifests, documentation, deployment defaults, and release packaging versions to `1.8.0`
+- Expanded governance packages, Prometheus metrics, worker maintenance, MCP behavior, performance qualification, and deployment configuration without removing prior APIs
+- Preserved all prior catalog, connector, classification, policy, AI activity, identity, evidence, integration, graph, search, job, ownership, governance, assurance, extensibility, and scale-qualification capabilities
+
 ## 1.7.0 - 2026-07-31
 
 ### Added

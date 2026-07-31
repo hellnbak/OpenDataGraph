@@ -15,6 +15,8 @@
 
 - “A unified, AI-consumable view of enterprise data risk and lifecycle.”
 - “Every classification and policy decision is explainable.”
+- “Every runtime permit or deny produces a durable receipt, and external signing happens after the hot path.”
+- “Expected model, vector-index, tool, and endpoint relationships make new runtime paths visible as drift.”
 - “Sensitive stale data becomes an actionable lifecycle decision—not another inventory count.”
 - “AI gateways query context before allowing enterprise data to leave a trust boundary.”
 

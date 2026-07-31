@@ -1,6 +1,6 @@
 # Governance Evidence Signing
 
-OpenDataGraph v1.7 can sign the canonical manifest of every governance evidence package and verify the package independently of its storage location. Signing covers the payload digest, each section digest, package identity, tenant, window, categories, record count, truncation state, and generator version.
+OpenDataGraph v1.8 can sign the canonical manifest of every governance evidence package and verify the package independently of its storage location. Signing covers the payload digest, each section digest, package identity, tenant, window, categories, record count, truncation state, and generator version. Runtime decision receipts reuse the same signing and verification profiles for their own canonical manifests.
 
 ## Package assurance model
 
@@ -45,6 +45,12 @@ AWS KMS example:
 Sigstore keyless profiles require `certificate_identity`, `certificate_oidc_issuer`, and `identity_token_ref`. The configured `ODG_COSIGN_EXECUTABLE` must provide compatible `sign-blob` and offline `verify-blob` commands. Tokens are resolved only during signing and are not added to the package.
 
 Set `ODG_GOVERNANCE_PACKAGE_DEFAULT_SIGNING_PROFILE` to select the default profile. Set `ODG_GOVERNANCE_PACKAGE_SIGNING_REQUIRED=true` to reject package creation when no signing profile is selected.
+
+## Runtime receipt signing
+
+`ODG_RUNTIME_RECEIPT_SIGNING_PROFILE` selects one of the same signing profiles for runtime decision receipts. Receipt creation stores a canonical manifest and returns immediately with `signing_status=pending`; workers sign later through atomically claimed receipt rows rather than one background job per decision.
+
+Receipt manifests cover tenant, subject/action/resource identifiers, request-property and context digests, policy result, enforcement mode, risk, reasons, obligations, issuance, and retention. They do not copy raw AuthZEN properties or context. `POST /api/v1/runtime/decision-receipts/{receipt_id}/verify` applies the same separation of cryptographic validity and configured trust. See [Runtime authorization](RUNTIME_AUTHORIZATION.md).
 
 ## Verification profiles
 

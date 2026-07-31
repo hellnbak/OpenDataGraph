@@ -9,8 +9,10 @@ from sqlalchemy import create_engine, delete, select
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
-from app.models import DataAsset, GraphEdge
+from app.models import AIAgent, DataAsset, GraphEdge, RuntimeDecisionReceipt
+from app.schemas import AuthZENEvaluationRequest
 from app.services.graph import query_graph
+from app.services.runtime_authorization import evaluate_access
 from app.version import VERSION
 
 
@@ -76,10 +78,34 @@ def run_benchmark(
                     set(),
                 ),
             )
+            authorization_latencies = _measure(
+                iterations,
+                lambda index: _authorize(
+                    db,
+                    tenant_id,
+                    index,
+                ),
+            )
+            authorization_batch_size = 10
+            authorization_batch_latencies = _measure(
+                iterations,
+                lambda index: _authorize_batch(
+                    db,
+                    tenant_id,
+                    index,
+                    authorization_batch_size,
+                ),
+            )
         finally:
             if database_url:
+                db.execute(
+                    delete(RuntimeDecisionReceipt).where(
+                        RuntimeDecisionReceipt.tenant_id == tenant_id
+                    )
+                )
                 db.execute(delete(GraphEdge).where(GraphEdge.tenant_id == tenant_id))
                 db.execute(delete(DataAsset).where(DataAsset.tenant_id == tenant_id))
+                db.execute(delete(AIAgent).where(AIAgent.tenant_id == tenant_id))
                 db.commit()
     return {
         "format": "opendatagraph-benchmark",
@@ -96,11 +122,35 @@ def run_benchmark(
         "operations": {
             "catalog_filter": _latency_summary(catalog_latencies),
             "graph_traversal": _latency_summary(graph_latencies),
+            "runtime_authorization": _latency_summary(authorization_latencies),
+            "runtime_authorization_batch_10": {
+                **_latency_summary(
+                    authorization_batch_latencies,
+                    operations_per_iteration=authorization_batch_size,
+                ),
+                "batch_size": authorization_batch_size,
+            },
         },
     }
 
 
 def _seed(db, tenant_id: str, asset_count: int, edge_count: int) -> None:
+    db.add(
+        AIAgent(
+            tenant_id=tenant_id,
+            key="benchmark-agent",
+            name="Benchmark Agent",
+            owner="benchmark@example.test",
+            business_purpose="Synthetic performance qualification",
+            framework="benchmark",
+            models="private-model",
+            allowed_domains="",
+            max_sensitivity="Restricted",
+            allowed_destinations="internal-rag,private-model",
+            approval_status="Approved",
+            risk_level="Medium",
+        )
+    )
     db.bulk_save_objects(
         [
             DataAsset(
@@ -133,6 +183,51 @@ def _seed(db, tenant_id: str, asset_count: int, edge_count: int) -> None:
     db.commit()
 
 
+def _authorize(db, tenant_id: str, index: int) -> None:
+    request = AuthZENEvaluationRequest.model_validate(
+        {
+            "subject": {"type": "ai_agent", "id": "benchmark-agent"},
+            "resource": {
+                "type": "data_asset",
+                "id": f"{tenant_id}-asset-{index}",
+            },
+            "action": {"name": "send"},
+            "context": {
+                "destination": "internal-rag",
+                "purpose": "benchmark",
+            },
+        }
+    )
+    evaluate_access(db, tenant_id, request, request_id=f"single-{index}-{uuid4()}")
+    db.commit()
+
+
+def _authorize_batch(db, tenant_id: str, index: int, batch_size: int) -> None:
+    for offset in range(batch_size):
+        asset_index = (index * batch_size + offset) % 100
+        request = AuthZENEvaluationRequest.model_validate(
+            {
+                "subject": {"type": "ai_agent", "id": "benchmark-agent"},
+                "resource": {
+                    "type": "data_asset",
+                    "id": f"{tenant_id}-asset-{asset_index}",
+                },
+                "action": {"name": "send"},
+                "context": {
+                    "destination": "internal-rag",
+                    "purpose": "benchmark-batch",
+                },
+            }
+        )
+        evaluate_access(
+            db,
+            tenant_id,
+            request,
+            request_id=f"batch-{index}-{offset}-{uuid4()}",
+        )
+    db.commit()
+
+
 def _measure(iterations: int, operation) -> list[float]:
     latencies = []
     for index in range(iterations):
@@ -142,14 +237,20 @@ def _measure(iterations: int, operation) -> list[float]:
     return latencies
 
 
-def _latency_summary(latencies: list[float]) -> dict:
+def _latency_summary(
+    latencies: list[float],
+    operations_per_iteration: int = 1,
+) -> dict:
     ordered = sorted(latencies)
     total_seconds = sum(ordered) / 1000
     return {
         "p50_ms": round(statistics.median(ordered), 3),
         "p95_ms": round(ordered[max(0, int(len(ordered) * 0.95) - 1)], 3),
         "max_ms": round(max(ordered), 3),
-        "operations_per_second": round(len(ordered) / total_seconds, 2),
+        "operations_per_second": round(
+            (len(ordered) * operations_per_iteration) / total_seconds,
+            2,
+        ),
     }
 
 

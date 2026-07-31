@@ -426,8 +426,12 @@ def test_benchmark_profiles_and_read_only_query_plan_capture(monkeypatch):
     report = capture_query_plans("postgresql://db/catalog", "tenant-a")
     assert report["analyze"] is False
     assert set(report["plans"]) == {
+        "ai-lineage-drift",
         "catalog-filter",
         "graph-outbound",
         "governance-overdue",
         "ownership-remediation",
+        "runtime-receipts-retention",
+        "runtime-receipts-signing",
+        "runtime-receipts-subject",
     }

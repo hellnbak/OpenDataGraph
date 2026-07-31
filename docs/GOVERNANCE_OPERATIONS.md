@@ -1,6 +1,6 @@
 # Governance Operations
 
-OpenDataGraph v1.7 unifies policy and evidence approvals in a tenant-scoped operational review queue and adds broader posture analytics and signed metadata-only evidence packages.
+OpenDataGraph v1.8 unifies policy and evidence approvals in a tenant-scoped operational review queue and adds broader posture analytics and signed metadata-only evidence packages.
 
 ## Task sources
 
@@ -40,7 +40,7 @@ Assignment moves the task to `in-progress`. It does not grant the assignee permi
 
 `ODG_GOVERNANCE_DEFAULT_SLA_HOURS` controls default due dates. `ODG_GOVERNANCE_DUE_SOON_HOURS` controls the reporting window.
 
-`GET /api/v1/governance/analytics` adds bounded-window SLA compliance, aging, ownership remediation, evidence disposition, service-account credential, and policy-decision posture. See [Governance analytics and evidence packages](GOVERNANCE_EVIDENCE_PACKAGES.md).
+`GET /api/v1/governance/analytics` adds bounded-window SLA compliance, aging, ownership remediation, evidence disposition, service-account credential, policy-decision, runtime authorization, receipt signing, and AI lineage drift posture. See [Governance analytics and evidence packages](GOVERNANCE_EVIDENCE_PACKAGES.md).
 
 ## Notifications
 

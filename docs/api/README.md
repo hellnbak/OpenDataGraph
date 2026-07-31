@@ -38,6 +38,17 @@ The `search` parameter uses OpenSearch when configured and database fallback oth
 - `POST /api/v1/policy/exceptions/{exception_id}/renewal`
 - `POST /api/v1/policy/exceptions/{exception_id}/renewal/approve`
 
+## Runtime authorization
+
+- `GET /.well-known/authzen-configuration`
+- `POST /access/v1/evaluation`
+- `POST /access/v1/evaluations`
+- `GET /api/v1/runtime/decision-receipts`
+- `GET /api/v1/runtime/decision-receipts/{receipt_id}`
+- `POST /api/v1/runtime/decision-receipts/{receipt_id}/verify`
+
+The access endpoints use AuthZEN Authorization API 1.0 subject, action, resource, context, decision, default, and batch-semantics shapes. Decision context includes OpenDataGraph policy obligations and receipt metadata. The default batch limit is 100 and can be raised to the hard limit of 1,000. `X-Request-ID` provides correlation; optional `Idempotency-Key` prevents duplicate receipts for an identical canonical request.
+
 ## Connectors and jobs
 
 - `POST /api/v1/connectors/s3/scan`
@@ -76,6 +87,11 @@ Synchronous dynamic connector types are `github`, `gitlab`, and `sharepoint`. Qu
 - `GET /api/v1/graph/exports/{export_id}`
 - `GET /api/v1/graph/exports/{export_id}/download`
 - `GET /api/v1/graph/export-sinks`
+- `POST|GET /api/v1/ai/resources`
+- `GET|PATCH /api/v1/ai/resources/{resource_key}`
+- `POST|GET /api/v1/ai/lineage/relationships`
+- `POST /api/v1/ai/lineage/observations`
+- `GET /api/v1/ai/lineage/drift`
 
 ## Evidence
 

@@ -1,69 +1,71 @@
-# OpenDataGraph v1.7.0
+# OpenDataGraph v1.8.0
 
-OpenDataGraph v1.7 adds assurance and extensibility controls: cryptographically signed governance evidence, connector capability governance, major-cloud workload exchange, Google Cloud Storage and Azure Blob export sinks, ownership escalation and trend analytics, and comparative performance baselines.
+OpenDataGraph v1.8 adds runtime governance and scale controls: AuthZEN-compatible policy decisions, enforceable obligations, durable decision receipts, deferred cryptographic signing, governed MCP context access, first-class AI resources, expected-versus-observed AI lineage, and expanded performance qualification.
 
-All v1.1 through v1.6 capabilities remain part of the platform. The README lists cumulative platform capabilities separately from release-specific additions.
+All v1.1 through v1.7 capabilities remain part of the platform. The README lists cumulative platform capabilities separately from release-specific additions.
 
-## Signed governance evidence
+## Runtime authorization
 
-Governance evidence package format version 2 adds a canonical manifest, whole-payload SHA-256, per-section digests, generator identity, and an assurance envelope. Workers can sign with mounted Ed25519 keys, AWS KMS, or Sigstore keyless identities. Signing credentials remain external references.
+The policy decision point accepts OpenID AuthZEN Authorization API 1.0 single and bounded batch request shapes at `/access/v1/evaluation` and `/access/v1/evaluations`. Well-known metadata advertises only the implemented evaluation endpoints. Existing OpenDataGraph policy APIs remain available.
 
-Verification first recomputes payload and section digests, then validates the signature, then evaluates the signer against a separate trust profile. The API and `python -m app.evidence_verify` report cryptographic validity separately from configured trust. Existing storage-level digest checks remain in place.
+`enforce` blocks policy denials, while conditional decisions are returned as permits with explicit obligations for the policy-enforcement point. `warn` and `observe` preserve the underlying policy decision and obligations but permit the request. Shared deployments default to `enforce` and must authenticate the caller with at least the analyst role.
 
-## Connector capability governance
+Every completed evaluation creates a tenant-scoped receipt containing subject, action, and resource identifiers; digests of request properties and context; the policy result; obligations; enforcement mode; and retention. Raw property and context values are not copied into the signed manifest. `X-Request-ID` is correlated and optional `Idempotency-Key` reuse is accepted only for the same request digest.
 
-Connector SDK v2 introduces versioned manifests for permissions, egress, content access, pagination, cursor behavior, rate-limit handling, timestamp provenance, public-access interpretation, and destructive-action declarations. Runs record connector version, manifest digest, and capability policy version.
+## Receipt assurance
 
-A central registry preserves all built-in connectors and supports explicitly allowlisted Python entry-point plugins. Deployment policy and versioned tenant policy can deny connector types, content-access levels, egress hosts, destructive behavior, non-incremental or non-opaque cursors, and oversized permission declarations. `python -m connectors.conformance` validates installed manifests without provider calls.
+Receipt creation and the authorization response use one synchronous database transaction. This makes authorization evidence durable before the permit or deny is returned, but database commit latency is part of the hot path.
 
-Plugins remain trusted in-process code and require ordinary software supply-chain review; capability policy is not a sandbox.
+When configured, workers claim pending receipts and sign canonical manifests outside the request path with the existing Ed25519, AWS KMS, or Sigstore profiles. Claims recover after timeout and failures retry with bounded backoff. Verification reports stored digest validity, cryptographic signature validity, and configured trust separately. Expired completed receipts are deleted in bounded worker batches.
 
-## Cloud workload exchange and export sinks
+## Governed AI resources and lineage
 
-Named workload exchange profiles read a referenced subject token only when needed and issue temporary AWS STS, Azure federated client, or Google Cloud STS credentials for at most one hour. Subject and returned credentials are never persisted or returned by profile-test APIs.
+Tenants can register models, prompts, vector indexes, tools, endpoints, and AI systems with owners, provider, region, status, risk tier, and bounded metadata. Runtime authorization denies access to missing or unapproved AI resources.
 
-S3 sinks can use an AWS exchange profile. New `gs://` and `azblob://` adapters require exact destination allowlists and matching Google Cloud or Azure exchange profiles. Existing HTTPS push and runtime AWS credential-chain behavior remain compatible. Kubernetes deployments can project multiple audience-specific service-account tokens to API and worker replicas.
+Data owners declare expected relationships across AI resources, agents, data assets, and datasets. Analysts ingest idempotent observations. A new or inactive relationship is marked as drift, while an expected active relationship updates observation counts and timestamps without drift. Relationships project into the existing graph for bounded traversal and export.
 
-## Ownership escalation and trends
+## Governed MCP
 
-Data owners can attach a versioned escalation policy to manual or scheduled ownership campaigns. Each policy has one to twenty unique reminder or overdue stages relative to campaign due time, a recipient class, and optional explicit integration destinations.
+Read-oriented MCP tools now act as policy-enforcement points and request a runtime decision before catalog, summary, AI activity, or relationship access. `ODG_MCP_AGENT_KEY` identifies the registered agent and `ODG_MCP_AUTHORIZATION_REQUIRED=true` keeps governance enabled. The existing `authorize_ai_data_use` tool remains compatible; new tools expose generic runtime evaluation and receipt inspection.
 
-Stage events have durable claim, retry, error, delivery-count, and idempotency state. Repeated scheduler passes cannot create duplicate endpoint deliveries. Auditors can inspect escalation events and bounded daily trends for campaign completion, assignment response, remediation resolution, active overdue campaigns, and nonresponses.
+The local MCP server still uses the SDK default transport. v1.8 does not add a public remote MCP authorization server or claim MCP OAuth conformance.
 
-## Performance baselines
+## Scale characteristics
 
-`python -m app.benchmark_baselines` captures benchmark results with a documented non-secret topology and optional structural fingerprints from read-only PostgreSQL plans. Comparisons enforce configurable latency and throughput regression budgets and can optionally fail on plan drift.
+The request path performs no KMS, Sigstore, connector, search, webhook, or cloud exchange call. Active policy definitions are cached per process for a bounded interval, batch requests reuse repeated entity lookups, and batch receipts commit together. PostgreSQL connection pool bounds are configurable per process.
 
-Reference topology documents cover local, small PostgreSQL, and large PostgreSQL qualification. Baselines support controlled comparison; they do not certify production capacity.
+Migration `20260731_0007` adds lean tenant-leading receipt, subject, resource, decision, AI resource, relationship, drift, signing-queue, retention, and policy-exception indexes without redundant field indexes on high-write tables. Benchmarks now measure durable single authorization and ten-item batch throughput. Read-only PostgreSQL plan capture covers receipt lookup, signing claims, retention cleanup, and lineage drift.
+
+OpenDataGraph does not publish a universal capacity claim. Durable receipt writes make PostgreSQL commit throughput the principal authorization limit. Signing throughput depends on signer latency and worker count. Operators must qualify representative policy, exception, batch, receipt-retention, database, and signer distributions against explicit p95 and error-rate budgets.
 
 ## Upgrade
 
 1. Stop API and worker processes.
 2. Create and verify database, evidence, graph-export, and governance-package backups.
-3. Review signing and verification profiles, connector plugin provenance and capability policy, workload exchange trust, destination allowlists, projected subject tokens, escalation routing, and regression budgets.
+3. Review `ODG_PUBLIC_BASE_URL`, database pool bounds, authorization mode, batch limit, receipt retention, signing profile, signing batch size, and purge batch size.
 4. Run `alembic upgrade head`.
-5. Start migration, API, and worker roles from the same v1.7 image and plugin set.
-6. Verify `/health`, `/ready`, Alembic revision `20260731_0006`, and tenant isolation.
-7. Generate and independently verify one signed synthetic governance package.
-8. Inspect every connector manifest and exercise one policy denial.
-9. Test each enabled exchange profile and export sink with an approved synthetic destination.
-10. Launch one synthetic campaign with a due escalation stage and confirm idempotent delivery.
-11. Capture and compare one representative performance baseline.
+5. Start migration, API, and worker roles from the same v1.8 image and connector plugin set.
+6. Verify `/health`, `/ready`, Alembic revision `20260731_0007`, tenant isolation, and AuthZEN metadata.
+7. Exercise allow, conditional, and deny evaluations plus `execute_all`, `deny_on_first_deny`, and `permit_on_first_permit` batches.
+8. If signing is enabled, confirm a receipt progresses from pending to signed and verifies against an independent trust profile.
+9. Register synthetic AI resources, declare one expected relationship, and verify an unexpected observation appears as drift.
+10. Run runtime authorization benchmarks and inspect representative PostgreSQL plans before accepting production traffic.
 
-Downgrades are not supported. Restore the verified pre-upgrade database and object-storage state if rollback is required. Remote export sink objects require their own governed cleanup.
+Downgrades are not supported. Restore the verified pre-upgrade database and object-storage state if rollback is required.
 
 ## Compatibility and limitations
 
-- Existing APIs and v1.1 through v1.6 workflows remain available.
-- Unsigned packages remain readable unless `ODG_GOVERNANCE_PACKAGE_SIGNING_REQUIRED=true`; they cannot become cryptographically trusted after creation without producing a new package.
-- Sigstore signing and verification require a compatible external `cosign` executable. Bundles are verified offline against pinned certificate identity and issuer.
-- Plugin packages execute in process and must be installed identically on API and worker images.
-- Workload exchange profiles support AWS, Azure, and Google Cloud only. Each exchange is performed when credentials are requested; no application token cache is added in v1.7.
-- Cloud export adapters are write-only. Destination retention, immutability, deletion, and independent integrity checks remain external responsibilities.
-- Escalation recipients are routing metadata delivered through configured integration endpoints; OpenDataGraph does not send email directly.
-- Trend windows are bounded summaries of OpenDataGraph campaign records, not proof of external entitlement review.
-- Performance baselines are environment-specific comparative evidence, not certified throughput or capacity.
+- Existing APIs and v1.1 through v1.7 workflows remain available.
+- AuthZEN subject, action, resource, context, decision, batch defaults, and batch semantics are implemented; AuthZEN search APIs and signed PDP metadata are not implemented.
+- The well-known PDP identifier must be an externally reachable HTTPS URL in shared deployments; configure `ODG_PUBLIC_BASE_URL` behind proxies.
+- Conditional decisions require the policy-enforcement point to understand and apply returned obligations or reject the operation.
+- Receipt signing is eventually completed. A successful decision can initially reference a pending or unsigned receipt.
+- Receipts retain identifiers, decisions, reasons, obligations, and request-property digests. Do not place prompts, responses, credentials, or customer content in authorization identifiers.
+- AI lineage drift means an observed relationship was not declared active and expected; it is not proof of malicious activity.
+- The MCP server remains a trusted local process and requires a registered, least-privileged AI agent identity.
+- SQLite remains suitable for local development and tests, not high-concurrency authorization.
+- Benchmarks and plan fingerprints are environment-specific evidence, not certified capacity.
 
 ## License
 
-OpenDataGraph v1.7.0 is source-available under `FSL-1.1-ALv2`. The license permits internal use, non-commercial education and research, and qualifying professional services while prohibiting competing commercial products and services. This release becomes available under Apache License 2.0 on July 31, 2028. Earlier releases retain the terms distributed with those releases.
+OpenDataGraph v1.8.0 is source-available under `FSL-1.1-ALv2`. The license permits internal use, non-commercial education and research, and qualifying professional services while prohibiting competing commercial products and services. This release becomes available under Apache License 2.0 on July 31, 2028. Earlier releases retain the terms distributed with those releases.

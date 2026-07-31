@@ -1,6 +1,6 @@
 # Background Jobs
 
-OpenDataGraph v1.7 stores durable jobs in the primary database and executes them with `python -m app.worker`.
+OpenDataGraph v1.8 stores durable jobs in the primary database and executes them with `python -m app.worker`.
 
 ## Supported jobs
 
@@ -24,6 +24,8 @@ POST /api/v1/connectors/{connector_type}/jobs
 Supported queued connector types are `aws-s3`, `google-drive`, `github`, `gitlab`, `sharepoint`, and `postgresql`.
 
 Workers also claim due interval or cron connector and ownership schedules and due ownership escalation stages before selecting the next pending job. Escalation stages queue ordinary idempotent `integration.deliver` jobs. See [Scheduling and provider budgets](SCHEDULING_AND_RATE_LIMITS.md).
+
+Workers claim pending runtime decision receipts separately from the general job table, sign canonical manifests, recover stale signing claims, retry with bounded backoff, and purge expired completed receipts in bounded batches. This avoids one background-job row per authorization decision and keeps external signer latency outside the request path.
 
 ## Credentials
 

@@ -149,6 +149,49 @@ def verify_evidence_package(
     }
 
 
+def verify_manifest_signature(
+    manifest: dict,
+    assurance: dict,
+    verification_profile: str | None = None,
+    require_signature: bool = False,
+) -> dict:
+    manifest_bytes = canonical_json(manifest)
+    manifest_digest = hashlib.sha256(manifest_bytes).hexdigest()
+    errors = []
+    signed = assurance.get("status") == "signed"
+    if signed and assurance.get("manifest_sha256") != manifest_digest:
+        errors.append("manifest-digest-mismatch")
+    signature_valid = False
+    trusted = False
+    trust_profile_name = verification_profile or assurance.get("profile")
+    trust_profile = _trust_profile(
+        trust_profile_name,
+        verification_profile is not None,
+    )
+    if signed and not errors:
+        signature_valid = _verify_signature(manifest_bytes, assurance)
+        trusted = signature_valid and _profile_trusts_assurance(
+            trust_profile,
+            assurance,
+        )
+        if not signature_valid:
+            errors.append("signature-invalid")
+    elif require_signature:
+        errors.append("signature-required")
+    return {
+        "valid": not errors,
+        "signed": signed,
+        "signature_valid": signature_valid,
+        "trusted": trusted,
+        "signing_profile": assurance.get("profile"),
+        "verification_profile": trust_profile_name if trust_profile else None,
+        "signature_type": assurance.get("type"),
+        "key_id": assurance.get("key_id"),
+        "manifest_sha256": manifest_digest,
+        "errors": errors,
+    }
+
+
 def section_digests(analytics: object, records: dict) -> dict[str, str]:
     return _section_digests(analytics, records)
 

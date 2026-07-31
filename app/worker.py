@@ -10,6 +10,10 @@ from .services.ownership import (
     enqueue_due_ownership_campaigns,
     enqueue_due_ownership_escalations,
 )
+from .services.runtime_authorization import (
+    process_pending_receipts,
+    purge_expired_receipts,
+)
 from .services.schedules import enqueue_due_schedules
 
 
@@ -30,6 +34,7 @@ def run() -> None:
         recovered = recover_stale_jobs(db)
         if recovered:
             logger.warning("recovered stale background jobs", extra={"count": recovered})
+    next_receipt_purge = time.monotonic()
     while not stopping:
         with SessionLocal() as db:
             enqueue_due_schedules(db, settings.worker_schedule_batch_size)
@@ -41,6 +46,16 @@ def run() -> None:
                 db,
                 settings.worker_schedule_batch_size,
             )
+            process_pending_receipts(
+                db,
+                settings.runtime_receipt_signing_batch_size,
+            )
+            if time.monotonic() >= next_receipt_purge:
+                purge_expired_receipts(
+                    db,
+                    settings.runtime_receipt_purge_batch_size,
+                )
+                next_receipt_purge = time.monotonic() + 60
             job = claim_next_job(db)
             if job:
                 logger.info("running background job", extra={"job_id": job.job_id, "job_type": job.job_type})

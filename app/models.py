@@ -319,7 +319,19 @@ class PolicyBundle(TenantMixin, Base):
 
 class PolicyException(TenantMixin, Base):
     __tablename__ = "policy_exceptions"
-    __table_args__ = (UniqueConstraint("tenant_id", "exception_id", name="uq_policy_exception_tenant_id"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "exception_id",
+            name="uq_policy_exception_tenant_id",
+        ),
+        Index(
+            "ix_policy_exceptions_tenant_active_expires",
+            "tenant_id",
+            "active",
+            "expires_at",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     exception_id: Mapped[str] = mapped_column(String(36), index=True)
@@ -783,3 +795,224 @@ class GovernanceEvidencePackage(TenantMixin, Base):
     created_by: Mapped[str] = mapped_column(String(320))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class RuntimeDecisionReceipt(TenantMixin, Base):
+    __tablename__ = "runtime_decision_receipts"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "receipt_id",
+            name="uq_runtime_decision_receipt_tenant_id",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "idempotency_key",
+            name="uq_runtime_decision_receipt_tenant_idempotency",
+        ),
+        Index(
+            "ix_runtime_receipts_tenant_created",
+            "tenant_id",
+            "created_at",
+        ),
+        Index(
+            "ix_runtime_receipts_tenant_subject_created",
+            "tenant_id",
+            "subject_type",
+            "subject_id",
+            "created_at",
+        ),
+        Index(
+            "ix_runtime_receipts_tenant_resource_created",
+            "tenant_id",
+            "resource_type",
+            "resource_id",
+            "created_at",
+        ),
+        Index(
+            "ix_runtime_receipts_tenant_decision_created",
+            "tenant_id",
+            "decision",
+            "created_at",
+        ),
+        Index(
+            "ix_runtime_receipts_tenant_signing_created",
+            "tenant_id",
+            "signing_status",
+            "created_at",
+        ),
+        Index(
+            "ix_runtime_receipts_signing_queue",
+            "signing_status",
+            "signing_available_at",
+            "created_at",
+        ),
+        Index(
+            "ix_runtime_receipts_retention_queue",
+            "retention_until",
+            "signing_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    receipt_id: Mapped[str] = mapped_column(String(36))
+    request_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    subject_type: Mapped[str] = mapped_column(String(80))
+    subject_id: Mapped[str] = mapped_column(String(320))
+    action_name: Mapped[str] = mapped_column(String(160))
+    resource_type: Mapped[str] = mapped_column(String(80))
+    resource_id: Mapped[str] = mapped_column(String(1024))
+    request_sha256: Mapped[str] = mapped_column(String(64))
+    decision: Mapped[bool] = mapped_column(Boolean)
+    policy_decision: Mapped[str] = mapped_column(String(40))
+    enforcement_mode: Mapped[str] = mapped_column(String(20))
+    risk_score: Mapped[int] = mapped_column(Integer)
+    policy_version: Mapped[str] = mapped_column(String(160))
+    matched_policies_json: Mapped[str] = mapped_column(Text, default="[]")
+    reasons_json: Mapped[str] = mapped_column(Text, default="[]")
+    obligations_json: Mapped[str] = mapped_column(Text, default="[]")
+    manifest_json: Mapped[str] = mapped_column(Text)
+    manifest_sha256: Mapped[str] = mapped_column(String(64))
+    signing_status: Mapped[str] = mapped_column(String(40), default="unsigned")
+    signing_profile: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    assurance_json: Mapped[str] = mapped_column(Text, default="{}")
+    signing_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    signing_available_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    signing_claimed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    signing_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retention_until: Mapped[datetime] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class AIResource(TenantMixin, Base):
+    __tablename__ = "ai_resources"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "resource_key",
+            name="uq_ai_resource_tenant_key",
+        ),
+        Index(
+            "ix_ai_resources_tenant_type_status",
+            "tenant_id",
+            "resource_type",
+            "status",
+        ),
+        Index(
+            "ix_ai_resources_tenant_name",
+            "tenant_id",
+            "name",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    resource_key: Mapped[str] = mapped_column(String(320))
+    resource_type: Mapped[str] = mapped_column(String(40))
+    name: Mapped[str] = mapped_column(String(240))
+    owner: Mapped[str] = mapped_column(String(320))
+    provider: Mapped[str] = mapped_column(String(160), default="")
+    region: Mapped[str] = mapped_column(String(120), default="")
+    status: Mapped[str] = mapped_column(String(40), default="approved")
+    risk_tier: Mapped[str] = mapped_column(String(40), default="medium")
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_by: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class AIResourceRelationship(TenantMixin, Base):
+    __tablename__ = "ai_resource_relationships"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "source_type",
+            "source_id",
+            "relationship",
+            "target_type",
+            "target_id",
+            name="uq_ai_resource_relationship_edge",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "relationship_id",
+            name="uq_ai_resource_relationship_tenant_id",
+        ),
+        Index(
+            "ix_ai_relationships_tenant_source",
+            "tenant_id",
+            "source_type",
+            "source_id",
+        ),
+        Index(
+            "ix_ai_relationships_tenant_target",
+            "tenant_id",
+            "target_type",
+            "target_id",
+        ),
+        Index(
+            "ix_ai_relationships_tenant_expected_status",
+            "tenant_id",
+            "expected",
+            "status",
+            "updated_at",
+        ),
+        Index(
+            "ix_ai_relationships_tenant_updated",
+            "tenant_id",
+            "updated_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    relationship_id: Mapped[str] = mapped_column(String(36))
+    source_type: Mapped[str] = mapped_column(String(80))
+    source_id: Mapped[str] = mapped_column(String(320))
+    relationship: Mapped[str] = mapped_column(String(120))
+    target_type: Mapped[str] = mapped_column(String(80))
+    target_id: Mapped[str] = mapped_column(String(320))
+    expected: Mapped[bool] = mapped_column(Boolean, default=True)
+    status: Mapped[str] = mapped_column(String(40), default="active")
+    observation_count: Mapped[int] = mapped_column(Integer, default=0)
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    first_observed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_observed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class AILineageObservation(TenantMixin, Base):
+    __tablename__ = "ai_lineage_observations"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "event_id",
+            name="uq_ai_lineage_observation_tenant_event",
+        ),
+        Index(
+            "ix_ai_lineage_observations_tenant_drift_time",
+            "tenant_id",
+            "drift_detected",
+            "observed_at",
+        ),
+        Index(
+            "ix_ai_lineage_observations_tenant_relationship_time",
+            "tenant_id",
+            "relationship_id",
+            "observed_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[str] = mapped_column(String(240))
+    relationship_id: Mapped[str] = mapped_column(String(36))
+    source_type: Mapped[str] = mapped_column(String(80))
+    source_id: Mapped[str] = mapped_column(String(320))
+    relationship: Mapped[str] = mapped_column(String(120))
+    target_type: Mapped[str] = mapped_column(String(80))
+    target_id: Mapped[str] = mapped_column(String(320))
+    drift_detected: Mapped[bool] = mapped_column(Boolean, default=False)
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    observed_at: Mapped[datetime] = mapped_column(DateTime)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)

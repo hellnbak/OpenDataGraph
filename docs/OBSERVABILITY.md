@@ -1,6 +1,6 @@
 # Observability
 
-OpenDataGraph v1.7 exposes health, readiness, metrics, structured logs, delivery dashboards, governance SLA, posture and ownership trend analytics, lifecycle reporting, and optional traces.
+OpenDataGraph v1.8 exposes health, readiness, metrics, structured logs, delivery dashboards, governance SLA, posture and ownership trend analytics, lifecycle reporting, runtime authorization telemetry, and optional traces.
 
 ## Endpoints
 
@@ -9,6 +9,8 @@ OpenDataGraph v1.7 exposes health, readiness, metrics, structured logs, delivery
 - `/metrics` exposes Prometheus text metrics when `ODG_METRICS_ENABLED=true`.
 
 Restrict `/metrics` at the network layer in shared deployments.
+
+Runtime metrics include `odg_runtime_authorization_decisions_total{mode,policy_decision,decision}` and `odg_runtime_authorization_evaluation_seconds`. HTTP request latency includes receipt commit time; the policy-evaluation histogram does not.
 
 ## Logs
 
