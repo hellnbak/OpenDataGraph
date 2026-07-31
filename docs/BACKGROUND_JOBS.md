@@ -1,11 +1,15 @@
 # Background Jobs
 
-OpenDataGraph v1.2 stores durable jobs in the primary database and executes them with `python -m app.worker`.
+OpenDataGraph v1.4 stores durable jobs in the primary database and executes them with `python -m app.worker`.
 
 ## Supported jobs
 
 - `connector.scan`
 - `catalog.reindex`
+- `evidence.retention`
+- `evidence.disposition`
+- `identity.deprovision`
+- `integration.deliver`
 
 Submit connector work through:
 
@@ -14,6 +18,8 @@ POST /api/v1/connectors/{connector_type}/jobs
 ```
 
 Supported queued connector types are `aws-s3`, `google-drive`, `github`, `gitlab`, and `sharepoint`.
+
+Workers also claim due interval or cron connector schedules before selecting the next pending job. See [Scheduling and provider budgets](SCHEDULING_AND_RATE_LIMITS.md).
 
 ## Credentials
 
@@ -25,7 +31,7 @@ The file must be within `ODG_SECRET_FILE_ROOTS`. The worker resolves the value o
 
 Jobs move through `pending`, `running`, `completed`, `failed`, or `cancelled`. Failed jobs retry with bounded exponential backoff until `max_attempts`. Worker startup recovers claims older than `ODG_WORKER_CLAIM_TIMEOUT_SECONDS`.
 
-Cancellation is cooperative. A pending job cancels immediately; a running connector page completes before final state is observed.
+Cancellation is cooperative. A pending job cancels immediately; a running connector page or webhook request completes before final state is observed. Provider-budget exhaustion returns a connector job to pending until its shared window resets. Integration delivery that exhausts attempts becomes a dead letter. Evidence disposition and identity deprovisioning keep durable governance state separate from job state.
 
 ## APIs
 
@@ -34,4 +40,4 @@ Cancellation is cooperative. A pending job cancels immediately; a running connec
 - `POST /api/v1/jobs/{job_id}/cancel`
 - `POST /api/v1/jobs/{job_id}/retry`
 
-All job operations are tenant-scoped. Connector operators can control connector jobs; catalog reindex cancellation and retry require an administrator. PostgreSQL is recommended for multiple workers.
+All job operations are tenant-scoped. Connector operators can control connector jobs; catalog reindex, retention, disposition, identity, and integration control is limited to administrators. PostgreSQL is recommended for multiple workers and managed schedules.

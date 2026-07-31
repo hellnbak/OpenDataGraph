@@ -1,4 +1,4 @@
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import datetime
 import json
 from pathlib import Path
@@ -15,11 +15,13 @@ class GoogleDriveConnector:
         credentials_info: dict,
         impersonate_user: str | None = None,
         drive_id: str | None = None,
+        before_request: Callable[[], None] | None = None,
     ):
         self.account = account
         self.credentials_info = credentials_info
         self.impersonate_user = impersonate_user
         self.drive_id = drive_id
+        self.before_request = before_request
 
     def scan(self, cursor: str | None = None, max_items: int = 500) -> ScanBatch:
         service = self._service()
@@ -36,6 +38,8 @@ class GoogleDriveConnector:
         }
         if self.drive_id:
             params.update(corpora="drive", driveId=self.drive_id)
+        if self.before_request:
+            self.before_request()
         result = service.files().list(**params).execute()
         records = [_record(item, self.account) for item in result.get("files", [])[:max_items]]
         next_cursor = result.get("nextPageToken")

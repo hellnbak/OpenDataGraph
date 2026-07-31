@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.4.0 - 2026-07-30
+
+### Added
+
+- Five-field cron connector schedules with IANA time zones and recurring maintenance windows
+- Cached OIDC discovery metadata, bounded SCIM Bulk operations, and durable identity deprovisioning jobs
+- Integration dead-letter state, tenant delivery dashboards, and explicit replay with provenance
+- Structured policy bundle diffs, scoped approver delegation, and independently approved exception renewal
+- S3 Object Lock verification and two-person evidence disposition workflows
+- Composite tenant graph indexes, path explanations, and bounded JSON, CSV, and GraphML export
+- Alembic upgrade from v1.3 and deterministic tests for all v1.4 product-hardening controls
+
+### Changed
+
+- Updated application, console, chart, documentation, and release packaging versions to `1.4.0`
+- Extended existing schedule, SCIM, evidence, policy, integration, graph, job, and summary APIs without removing prior release capabilities
+- Expanded operator guidance for identity, retention, outbound delivery recovery, graph export, and production configuration
+
+## 1.3.0 - 2026-07-30
+
+### Added
+
+- Managed tenant-scoped connector schedules with worker-safe due-time claiming
+- Shared provider request budgets enforced across direct scans, schedules, and workers
+- Signed provider-specific OIDC validation with claim and role mapping
+- SCIM 2.0 user and group provisioning with bounded payloads and dedicated authentication
+- Evidence retention defaults, governance updates, legal hold, deletion metadata, and retention jobs
+- Versioned policy bundles with submission, approval, activation, retirement, rollback, and scoped exceptions
+- Allowlisted signed webhook destinations, delivery records, worker retries, and observe or enforce modes
+- Idempotent OpenLineage ingestion and bounded advanced relational graph traversal
+- Alembic upgrade from v1.2 and deterministic tests for every v1.3 control plane
+
+### Changed
+
+- Updated application, console, chart, policy, and documentation versions to `1.3.0`
+- Reworked the README to preserve cumulative v1.1 and v1.2 platform capabilities
+- Expanded authentication, connector, evidence, policy, API, graph, deployment, security, and operations documentation
+
 ## 1.2.0 - 2026-07-30
 
 ### Added

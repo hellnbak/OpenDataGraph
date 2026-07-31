@@ -5,7 +5,7 @@ from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, 
 from app.config import settings
 
 
-def test_initial_migration_creates_v12_schema(tmp_path, monkeypatch):
+def test_initial_migration_creates_v14_schema(tmp_path, monkeypatch):
     database = tmp_path / "migration.db"
     database_url = f"sqlite:///{database}"
     monkeypatch.setattr(settings, "database_url", database_url)
@@ -13,8 +13,41 @@ def test_initial_migration_creates_v12_schema(tmp_path, monkeypatch):
     config.set_main_option("sqlalchemy.url", database_url)
     command.upgrade(config, "head")
     inspector = inspect(create_engine(database_url))
-    assert {"background_jobs", "evidence_records", "alembic_version"} <= set(inspector.get_table_names())
+    assert {
+        "background_jobs",
+        "connector_schedules",
+        "evidence_dispositions",
+        "evidence_records",
+        "identity_deprovision_workflows",
+        "integration_endpoints",
+        "lineage_events",
+        "policy_approver_delegations",
+        "policy_bundles",
+        "provider_rate_limits",
+        "scim_resources",
+        "alembic_version",
+    } <= set(inspector.get_table_names())
     assert "tenant_id" in {column["name"] for column in inspector.get_columns("data_assets")}
+    assert {
+        "retention_until",
+        "legal_hold",
+        "deleted_at",
+        "deleted_by",
+        "deletion_reason",
+        "object_lock_status",
+        "object_lock_verified_at",
+    } <= {column["name"] for column in inspector.get_columns("evidence_records")}
+    assert {
+        "schedule_type",
+        "cron_expression",
+        "timezone",
+        "maintenance_windows_json",
+    } <= {column["name"] for column in inspector.get_columns("connector_schedules")}
+    assert {
+        "ix_graph_edges_tenant_source",
+        "ix_graph_edges_tenant_target",
+        "ix_graph_edges_tenant_relationship",
+    } <= {index["name"] for index in inspector.get_indexes("graph_edges")}
 
 
 def test_migration_upgrades_v11_global_uniqueness(tmp_path, monkeypatch):
@@ -73,3 +106,37 @@ def test_migration_upgrades_v11_global_uniqueness(tmp_path, monkeypatch):
                 "VALUES ('tenant-b', 'event-1')"
             )
         )
+
+
+def test_v13_migration_adds_evidence_governance_to_v12_database(tmp_path, monkeypatch):
+    database = tmp_path / "v12.db"
+    database_url = f"sqlite:///{database}"
+    engine = create_engine(database_url)
+    legacy = MetaData()
+    Table(
+        "evidence_records",
+        legacy,
+        Column("id", Integer, primary_key=True),
+        Column("evidence_id", String(36), nullable=False),
+    )
+    Table(
+        "alembic_version",
+        legacy,
+        Column("version_num", String(32), primary_key=True),
+    )
+    legacy.create_all(engine)
+    with engine.begin() as connection:
+        connection.execute(
+            text("INSERT INTO alembic_version (version_num) VALUES ('20260730_0001')")
+        )
+
+    monkeypatch.setattr(settings, "database_url", database_url)
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", database_url)
+    command.upgrade(config, "head")
+
+    inspector = inspect(engine)
+    assert {"retention_until", "legal_hold", "deleted_at"} <= {
+        column["name"] for column in inspector.get_columns("evidence_records")
+    }
+    assert "connector_schedules" in inspector.get_table_names()

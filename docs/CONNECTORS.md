@@ -1,6 +1,6 @@
 # Connectors
 
-OpenDataGraph v1.2 includes metadata-first adapters for AWS S3, Google Drive, GitHub, GitLab, and SharePoint / OneDrive.
+OpenDataGraph v1.4 includes metadata-first adapters for AWS S3, Google Drive, GitHub, GitLab, and SharePoint / OneDrive.
 
 All connectors normalize source records before tenant-scoped catalog ingestion. Runs record source, account, status, imported and updated counts, safe errors, timestamps, and opaque cursor progression.
 
@@ -13,6 +13,8 @@ POST /api/v1/connectors/{connector_type}/jobs
 ```
 
 Queued connectors support retry, cancellation, stale-claim recovery, and result inspection. They store only non-secret configuration and a secret reference.
+
+Managed interval schedules enqueue the same durable jobs. Tenant/provider request budgets are consumed before provider calls across direct scans, jobs, schedules, and worker replicas.
 
 ## Credential principles
 

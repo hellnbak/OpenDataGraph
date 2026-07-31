@@ -1,6 +1,6 @@
 # Observability
 
-OpenDataGraph v1.2 exposes health, readiness, metrics, structured logs, and optional traces.
+OpenDataGraph v1.4 exposes health, readiness, metrics, structured logs, delivery dashboards, and optional traces.
 
 ## Endpoints
 
@@ -21,3 +21,7 @@ Clients may supply `X-Request-ID`; otherwise the API generates one and returns i
 Set `OTEL_EXPORTER_OTLP_ENDPOINT` to enable OTLP HTTP trace export. `OTEL_SERVICE_NAME` controls the service resource name. Send traces only to an approved TLS-protected collector.
 
 The FastAPI instrumentation excludes health, readiness, and metrics paths. OpenDataGraph does not attach prompts, responses, tool arguments, evidence bytes, or credentials to spans.
+
+## Operational dashboards
+
+`GET /api/v1/integrations/dashboard` returns tenant-scoped delivery totals, status counts, success rate, and endpoint summaries. The console summary also surfaces dead letters and pending evidence dispositions. Alert on dead letters, repeatedly failed governance jobs, stalled deprovisioning workflows, and growing disposition queues.

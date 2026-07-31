@@ -1,5 +1,5 @@
 from datetime import datetime
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 from .security import validate_https_url
 from .sdk import AssetRecord, ScanBatch
@@ -14,16 +14,20 @@ class GitHubConnector:
         token: str,
         api_url: str = "https://api.github.com",
         allowed_hosts: Iterable[str] | None = None,
+        before_request: Callable[[], None] | None = None,
     ):
         self.account = organization
         self.token = token
         self.api_url = validate_https_url(api_url, allowed_hosts)
+        self.before_request = before_request
 
     def scan(self, cursor: str | None = None, max_items: int = 500) -> ScanBatch:
         import httpx
 
         page = int(cursor or "1")
         headers = {"Authorization": f"Bearer {self.token}", "Accept": "application/vnd.github+json"}
+        if self.before_request:
+            self.before_request()
         response = httpx.get(
             f"{self.api_url}/orgs/{self.account}/repos",
             headers=headers,

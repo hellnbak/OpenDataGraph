@@ -25,14 +25,17 @@ The chart is under `deploy/helm/opendatagraph`. It requires a pre-created Kubern
 
 - `ODG_DATABASE_URL`
 - `ODG_API_KEYS_JSON`
+- `ODG_OIDC_PROVIDERS_JSON`
+- `ODG_SCIM_TOKENS_JSON`
 - `ODG_OPENSEARCH_URL`
 - `ODG_EVIDENCE_BUCKET`
 - `ODG_EVIDENCE_REGION`
 - optional `OTEL_EXPORTER_OTLP_ENDPOINT`
+- optional connector and integration signing secrets referenced by workers
 
 The migration hook runs before install and upgrade. The chart deploys multiple API and worker replicas, probes, autoscaling, a disruption budget, and a network policy. Configure TLS ingress, workload identity, secret injection, egress restrictions, and telemetry scraping for the target cluster.
 
-Provider endpoints must use HTTPS and match the provider-specific host allowlists in chart configuration. Add self-hosted provider domains explicitly and keep network-policy egress aligned with the same list.
+Provider and integration endpoints must use HTTPS and match exact host allowlists in chart configuration. OIDC discovery uses the configured issuer host; explicitly approve any different JWKS host. Add self-hosted provider domains explicitly and keep network-policy egress aligned with the same lists.
 
 ## AWS templates
 
@@ -42,7 +45,7 @@ The templates expect an existing VPC, private subnets, and application workload 
 
 ## Evidence
 
-Production deployments should use `ODG_EVIDENCE_BACKEND=s3`, bucket versioning, encryption, public-access blocking, lifecycle policy, and workload identity. Local evidence storage is for evaluation or controlled single-node environments.
+Production deployments should use `ODG_EVIDENCE_BACKEND=s3`, bucket versioning, encryption, public-access blocking, lifecycle policy, and workload identity. Align `ODG_EVIDENCE_DEFAULT_RETENTION_DAYS`, application legal hold, Object Lock, disposition approval, and bucket lifecycle. The Helm default enables `ODG_EVIDENCE_DISPOSITION_APPROVAL_REQUIRED`. Local evidence storage is for evaluation or controlled single-node environments.
 
 ## Observability
 
@@ -60,6 +63,13 @@ Use `python -m app.operations backup` for application-coordinated recovery testi
 - managed PostgreSQL, OpenSearch, and S3-compatible evidence
 - external secret management and workload identity
 - connector egress restrictions
+- integration egress restrictions and signing-secret rotation
+- reviewed OIDC claim mapping and independently rotated SCIM credentials
+- provider request budgets, time zones, and maintenance windows before enabling schedules
+- OIDC discovery egress and SCIM deprovisioning ownership
+- integration dead-letter monitoring and replay procedures
+- evidence retention, Object Lock verification, legal hold, and disposition approval procedures
+- bounded graph export limits and access review
 - migration and rollback plans
 - tested database and evidence recovery
 - centralized logs, metrics, traces, and alerts

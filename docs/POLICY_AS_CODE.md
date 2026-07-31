@@ -1,6 +1,6 @@
 # Policy as Code
 
-OpenDataGraph loads deterministic YAML policy definitions from `ODG_POLICY_DIRECTORY`.
+OpenDataGraph loads deterministic YAML policy definitions from `ODG_POLICY_DIRECTORY` when no database-backed policy bundle is active.
 
 ```yaml
 id: deny-restricted-data-to-public-ai
@@ -25,8 +25,8 @@ The engine supports asset sensitivity, destination type, agent status, action, a
 
 Decisions are ordered `allow < conditional < deny`. Matched rules contribute reasons, controls, and risk. The result also considers agent approval, sensitivity ceiling, domain scope, destination approval, and asset exposure.
 
-v1.2 adds `tenant-context` to standard controls and stores policy audits in the authenticated tenant.
+Standard controls include `tenant-context`, and policy audits remain in the authenticated tenant. v1.4 includes versioned bundles, structured diffs, delegated review, activation, rollback, expiring exceptions, and renewal. See [Policy governance](POLICY_GOVERNANCE.md).
 
 ## Simulation
 
-`POST /api/v1/policy/simulate` evaluates the current bundle without recording an enforcement audit. Asset and agent lookups remain tenant-scoped.
+`POST /api/v1/policy/simulate` evaluates the active database bundle, or the YAML fallback, without recording an enforcement audit. Asset and agent lookups remain tenant-scoped.

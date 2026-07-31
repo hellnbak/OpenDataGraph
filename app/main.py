@@ -2,11 +2,12 @@ import hashlib
 import json
 import re
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -29,11 +30,18 @@ from .models import (
     AIUsageEvent,
     BackgroundJob,
     ClassificationReview,
+    ConnectorSchedule,
     ConnectorRun,
     DataAsset,
     DecisionAudit,
+    EvidenceDisposition,
     EvidenceRecord,
     GraphEdge,
+    IdentityDeprovisionWorkflow,
+    IntegrationDelivery,
+    IntegrationEndpoint,
+    LineageEvent,
+    PolicyBundle,
     utc_now,
 )
 from .observability import configure_observability
@@ -42,6 +50,7 @@ from .services.evidence import evidence_health, load_evidence, store_evidence
 from .services.jobs import cancel_job, enqueue_job, resolve_secret, retry_job
 from .services.policy import audit as audit_decision, evaluate as evaluate_decision
 from .services.search import index_asset, search_asset_ids, search_health
+from .services.schedules import ProviderRateLimitExceeded, provider_request_guard
 from .schemas import (
     AgentCreate,
     AgentOut,
@@ -59,6 +68,8 @@ from .schemas import (
     PolicySimulationRequest,
     S3ScanRequest,
 )
+from .v13 import router as v13_router
+from .v14 import router as v14_router
 
 
 async def enrich_asset(asset: DataAsset, deterministic: bool = False) -> None:
@@ -117,8 +128,19 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifespan)
 configure_observability(app)
+app.include_router(v14_router)
+app.include_router(v13_router)
 BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+
+
+@app.exception_handler(ProviderRateLimitExceeded)
+def provider_rate_limit_handler(_request: Request, exc: ProviderRateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": str(exc), "provider": exc.provider},
+        headers={"Retry-After": str(exc.retry_after_seconds)},
+    )
 
 
 @app.get("/", response_class=FileResponse)
@@ -222,6 +244,12 @@ def summary(
     profile = PROFILES.get(profile_key)
     archive_candidates = sum(weighted for state, weighted in lifecycle.items() if state in {"Aging", "Stale"})
     estimated_savings = round(annual_storage_cost * (archive_candidates / max(total_assets, 1)) * .55)
+    active_policy_bundle = db.scalar(
+        select(PolicyBundle).where(
+            PolicyBundle.tenant_id == tenant_id,
+            PolicyBundle.status == "active",
+        )
+    )
     return {
         "organization": profile.name if profile else "OpenDataGraph Demo",
         "industry": profile.industry if profile else "Starter Dataset",
@@ -254,6 +282,56 @@ def summary(
             select(func.count(EvidenceRecord.id)).where(EvidenceRecord.tenant_id == tenant_id)
         )
         or 0,
+        "connector_schedules": db.scalar(
+            select(func.count(ConnectorSchedule.id)).where(
+                ConnectorSchedule.tenant_id == tenant_id,
+                ConnectorSchedule.enabled.is_(True),
+            )
+        )
+        or 0,
+        "integration_endpoints": db.scalar(
+            select(func.count(IntegrationEndpoint.id)).where(
+                IntegrationEndpoint.tenant_id == tenant_id,
+                IntegrationEndpoint.enabled.is_(True),
+            )
+        )
+        or 0,
+        "integration_deliveries": db.scalar(
+            select(func.count(IntegrationDelivery.id)).where(
+                IntegrationDelivery.tenant_id == tenant_id
+            )
+        )
+        or 0,
+        "dead_letter_deliveries": db.scalar(
+            select(func.count(IntegrationDelivery.id)).where(
+                IntegrationDelivery.tenant_id == tenant_id,
+                IntegrationDelivery.status == "dead-letter",
+            )
+        )
+        or 0,
+        "pending_evidence_dispositions": db.scalar(
+            select(func.count(EvidenceDisposition.id)).where(
+                EvidenceDisposition.tenant_id == tenant_id,
+                EvidenceDisposition.status == "pending",
+            )
+        )
+        or 0,
+        "identity_deprovisioning": db.scalar(
+            select(func.count(IdentityDeprovisionWorkflow.id)).where(
+                IdentityDeprovisionWorkflow.tenant_id == tenant_id,
+                IdentityDeprovisionWorkflow.status.in_(("pending", "running")),
+            )
+        )
+        or 0,
+        "lineage_events": db.scalar(
+            select(func.count(LineageEvent.id)).where(LineageEvent.tenant_id == tenant_id)
+        )
+        or 0,
+        "active_policy_bundle": (
+            {"name": active_policy_bundle.name, "version": active_policy_bundle.version}
+            if active_policy_bundle
+            else None
+        ),
         "search_backend": settings.search_backend,
     }
 
@@ -330,7 +408,15 @@ def evaluate_policy(
     agent = _agent_for_tenant(db, req.agent_key, principal.tenant_id)
     if not agent:
         raise HTTPException(404, "AI agent not found")
-    result = evaluate_decision(agent, asset, req.destination, req.action, req.purpose)
+    result = evaluate_decision(
+        agent,
+        asset,
+        req.destination,
+        req.action,
+        req.purpose,
+        db,
+        principal.tenant_id,
+    )
     audit_decision(db, req, result, principal.tenant_id)
     return PolicyDecision(
         asset_id=asset.id,
@@ -349,13 +435,20 @@ async def scan_s3(
     principal: Principal = Depends(require_role("connector-operator")),
 ):
     try:
-        connector = S3Connector(req.bucket, req.prefix, req.region)
+        connector = S3Connector(
+            req.bucket,
+            req.prefix,
+            req.region,
+            before_request=provider_request_guard(db, principal.tenant_id, "aws-s3"),
+        )
         return await ingest_connector(
             db,
             connector,
             max_items=req.max_objects,
             tenant_id=principal.tenant_id,
         )
+    except ProviderRateLimitExceeded:
+        raise
     except Exception as exc:
         raise HTTPException(400, f"S3 scan failed: {safe_connector_error(exc)}") from exc
 
@@ -373,6 +466,7 @@ async def scan_google_drive(
             credentials_info=credentials_info,
             impersonate_user=req.impersonate_user,
             drive_id=req.drive_id,
+            before_request=provider_request_guard(db, principal.tenant_id, "google-drive"),
         )
         return await ingest_connector(
             db,
@@ -380,6 +474,8 @@ async def scan_google_drive(
             max_items=req.max_files,
             tenant_id=principal.tenant_id,
         )
+    except ProviderRateLimitExceeded:
+        raise
     except Exception as exc:
         raise HTTPException(400, f"Google Drive scan failed: {safe_connector_error(exc)}") from exc
 
@@ -445,6 +541,7 @@ async def scan_connector(
                 req.token,
                 req.api_url or "https://api.github.com",
                 allowed_hosts=settings.github_allowed_hosts,
+                before_request=provider_request_guard(db, principal.tenant_id, "github"),
             )
         elif connector_type == "gitlab":
             connector = GitLabConnector(
@@ -452,6 +549,7 @@ async def scan_connector(
                 req.token,
                 req.api_url or "https://gitlab.com/api/v4",
                 allowed_hosts=settings.gitlab_allowed_hosts,
+                before_request=provider_request_guard(db, principal.tenant_id, "gitlab"),
             )
         elif connector_type == "sharepoint":
             if not req.site_id or not req.drive_id:
@@ -461,6 +559,7 @@ async def scan_connector(
                 req.drive_id,
                 req.token,
                 allowed_hosts=settings.sharepoint_allowed_hosts,
+                before_request=provider_request_guard(db, principal.tenant_id, "sharepoint"),
             )
         else:
             raise HTTPException(404, "Supported connector types: github, gitlab, sharepoint")
@@ -472,6 +571,8 @@ async def scan_connector(
             tenant_id=principal.tenant_id,
         )
     except HTTPException:
+        raise
+    except ProviderRateLimitExceeded:
         raise
     except Exception as exc:
         raise HTTPException(400, f"{connector_type} scan failed: {safe_connector_error(exc)}") from exc
@@ -613,7 +714,15 @@ def simulate_policy(
     agent = _agent_for_tenant(db, req.agent_key, principal.tenant_id)
     if not agent:
         raise HTTPException(404, "AI agent not found")
-    result = evaluate_decision(agent, asset, req.destination, req.action, req.purpose)
+    result = evaluate_decision(
+        agent,
+        asset,
+        req.destination,
+        req.action,
+        req.purpose,
+        db,
+        principal.tenant_id,
+    )
     return {"simulation": True, "asset_id": asset.id, "agent_key": agent.key, **result}
 
 
@@ -637,7 +746,15 @@ def ingest_ai_usage_event(
     agent = _agent_for_tenant(db, req.agent_key, principal.tenant_id)
     if not agent:
         raise HTTPException(404, "AI agent not found")
-    result = evaluate_decision(agent, asset, req.destination, req.action, req.purpose)
+    result = evaluate_decision(
+        agent,
+        asset,
+        req.destination,
+        req.action,
+        req.purpose,
+        db,
+        principal.tenant_id,
+    )
     event = AIUsageEvent(
         tenant_id=principal.tenant_id,
         event_id=req.event_id,
@@ -872,6 +989,11 @@ async def upload_evidence(
         sha256=digest,
         size_bytes=len(content),
         metadata_json=json.dumps(metadata),
+        retention_until=(
+            utc_now() + timedelta(days=settings.evidence_default_retention_days)
+            if settings.evidence_default_retention_days > 0
+            else None
+        ),
         created_by=principal.subject,
     )
     db.add(record)
@@ -884,6 +1006,7 @@ async def upload_evidence(
 def list_evidence(
     subject_type: str | None = None,
     subject_id: str | None = None,
+    include_deleted: bool = False,
     limit: int = Query(default=100, ge=1, le=1000),
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_role("auditor")),
@@ -897,6 +1020,8 @@ def list_evidence(
         statement = statement.where(EvidenceRecord.subject_type == subject_type)
     if subject_id:
         statement = statement.where(EvidenceRecord.subject_id == subject_id)
+    if not include_deleted:
+        statement = statement.where(EvidenceRecord.deleted_at.is_(None))
     return [_evidence_response(record) for record in db.scalars(statement.limit(limit)).all()]
 
 
@@ -914,6 +1039,8 @@ def download_evidence(
     )
     if not record:
         raise HTTPException(404, "Evidence record not found")
+    if record.deleted_at:
+        raise HTTPException(410, "Evidence object has been deleted")
     try:
         content = load_evidence(record.storage_uri)
     except (OSError, ValueError, RuntimeError) as exc:
@@ -960,8 +1087,8 @@ def _job_for_tenant(db: Session, job_id: str, tenant_id: str) -> BackgroundJob |
 
 
 def _authorize_job_control(job: BackgroundJob, principal: Principal) -> None:
-    if job.job_type == "catalog.reindex" and principal.role != "administrator":
-        raise HTTPException(403, "administrator role required for catalog reindex jobs")
+    if job.job_type != "connector.scan" and principal.role != "administrator":
+        raise HTTPException(403, "administrator role required for non-connector jobs")
 
 
 def _evidence_response(record: EvidenceRecord) -> dict:
@@ -976,6 +1103,16 @@ def _evidence_response(record: EvidenceRecord) -> dict:
         "sha256": record.sha256,
         "size_bytes": record.size_bytes,
         "metadata": json.loads(record.metadata_json or "{}"),
+        "retention_until": record.retention_until,
+        "legal_hold": record.legal_hold,
+        "deleted_at": record.deleted_at,
+        "deleted_by": record.deleted_by,
+        "deletion_reason": record.deletion_reason,
+        "object_lock_status": record.object_lock_status,
+        "object_lock_mode": record.object_lock_mode,
+        "object_lock_retain_until": record.object_lock_retain_until,
+        "object_lock_legal_hold": record.object_lock_legal_hold,
+        "object_lock_verified_at": record.object_lock_verified_at,
         "created_by": record.created_by,
         "created_at": record.created_at,
     }

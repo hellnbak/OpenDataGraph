@@ -199,5 +199,106 @@ class EvidenceOut(BaseModel):
     sha256: str
     size_bytes: int
     metadata: dict = Field(default_factory=dict)
+    retention_until: datetime | None
+    legal_hold: bool
+    deleted_at: datetime | None
+    deleted_by: str | None
+    deletion_reason: str | None
+    object_lock_status: str
+    object_lock_mode: str | None
+    object_lock_retain_until: datetime | None
+    object_lock_legal_hold: bool | None
+    object_lock_verified_at: datetime | None
     created_by: str
     created_at: datetime
+
+
+class ConnectorScheduleCreate(BaseModel):
+    connector_type: str = Field(pattern="^(aws-s3|google-drive|github|gitlab|sharepoint)$")
+    account: str = Field(min_length=1, max_length=240)
+    schedule_type: str = Field(default="interval", pattern="^(interval|cron)$")
+    interval_seconds: int = Field(default=3600, ge=60, le=604800)
+    cron_expression: str | None = Field(default=None, min_length=9, max_length=120)
+    timezone: str = Field(default="UTC", min_length=1, max_length=120)
+    maintenance_windows: list[dict] = Field(default_factory=list, max_length=20)
+    enabled: bool = True
+    secret_ref: str | None = Field(default=None, pattern=r"^(env|file):.+$")
+    cursor: str | None = None
+    max_items: int = Field(default=500, ge=1, le=5000)
+    api_url: str | None = None
+    site_id: str | None = None
+    drive_id: str | None = None
+    region: str | None = None
+    prefix: str = ""
+    impersonate_user: str | None = None
+
+
+class ConnectorScheduleUpdate(BaseModel):
+    enabled: bool | None = None
+    schedule_type: str | None = Field(default=None, pattern="^(interval|cron)$")
+    interval_seconds: int | None = Field(default=None, ge=60, le=604800)
+    cron_expression: str | None = Field(default=None, min_length=9, max_length=120)
+    timezone: str | None = Field(default=None, min_length=1, max_length=120)
+    maintenance_windows: list[dict] | None = Field(default=None, max_length=20)
+    next_run_at: datetime | None = None
+
+
+class ProviderRateLimitUpdate(BaseModel):
+    max_requests: int = Field(ge=1, le=1_000_000)
+    window_seconds: int = Field(ge=1, le=86400)
+
+
+class EvidenceGovernanceUpdate(BaseModel):
+    retention_until: datetime | None = None
+    legal_hold: bool | None = None
+    reason: str = Field(min_length=3, max_length=2000)
+
+
+class PolicyBundleCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=160, pattern=r"^[A-Za-z0-9_.-]+$")
+    version: int = Field(ge=1)
+    policies: list[dict] = Field(min_length=1, max_length=200)
+
+
+class PolicyExceptionCreate(BaseModel):
+    policy_id: str | None = Field(default=None, max_length=160)
+    agent_key: str | None = Field(default=None, max_length=120)
+    asset_id: int | None = Field(default=None, ge=1)
+    destination: str | None = Field(default=None, max_length=240)
+    action: str | None = Field(default=None, max_length=80)
+    purpose: str | None = Field(default=None, max_length=240)
+    override_decision: str = Field(pattern="^(allow|conditional)$")
+    reason: str = Field(min_length=3, max_length=2000)
+    controls: list[str] = Field(default_factory=list, max_length=50)
+    expires_at: datetime
+
+
+class PolicyApproverDelegationCreate(BaseModel):
+    subject: str = Field(min_length=1, max_length=320)
+    bundle_name: str | None = Field(default=None, min_length=1, max_length=160)
+    can_approve_bundles: bool = True
+    can_approve_exceptions: bool = False
+    expires_at: datetime
+
+
+class PolicyExceptionRenewalRequest(BaseModel):
+    expires_at: datetime
+    reason: str = Field(min_length=3, max_length=2000)
+
+
+class EvidenceDispositionCreate(BaseModel):
+    reason: str = Field(min_length=3, max_length=2000)
+    action: str = Field(default="delete", pattern="^delete$")
+
+
+class IntegrationReplayRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class IntegrationEndpointCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    mode: str = Field(default="observe", pattern="^(observe|enforce)$")
+    url: str = Field(min_length=8, max_length=2048)
+    secret_ref: str | None = Field(default=None, pattern=r"^(env|file):.+$")
+    events: list[str] = Field(default_factory=lambda: ["policy.decision"], min_length=1, max_length=50)
+    enabled: bool = True

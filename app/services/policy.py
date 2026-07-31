@@ -1,15 +1,27 @@
 import json
+import logging
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import AIAgent, DataAsset, DecisionAudit
-from app.services.policy_engine import evaluate_policies
+from app.models import AIAgent, DataAsset, DecisionAudit, PolicyBundle, PolicyException, utc_now
+from app.services.policy_engine import evaluate_policies, evaluate_policy_definitions
 
 
 SENSITIVITY = {"Public": 0, "Internal": 1, "Confidential": 2, "Restricted": 3, "Unclassified": 2}
-POLICY_VERSION = "1.2.0"
+POLICY_VERSION = "1.4.0"
 
 
-def evaluate(agent: AIAgent, asset: DataAsset, destination: str, action: str, purpose: str) -> dict:
+def evaluate(
+    agent: AIAgent,
+    asset: DataAsset,
+    destination: str,
+    action: str,
+    purpose: str,
+    db: Session | None = None,
+    tenant_id: str = "default",
+) -> dict:
     reasons = []
     controls = ["audit-log", "identity-context", "tenant-context"]
     risk = 20
@@ -22,7 +34,22 @@ def evaluate(agent: AIAgent, asset: DataAsset, destination: str, action: str, pu
         "action": action,
         "purpose": purpose,
     }
-    policy_matches = evaluate_policies(context, settings.policy_directory)
+    active_bundle = (
+        db.scalar(
+            select(PolicyBundle).where(
+                PolicyBundle.tenant_id == tenant_id,
+                PolicyBundle.status == "active",
+            )
+        )
+        if db
+        else None
+    )
+    if active_bundle:
+        policy_matches = evaluate_policy_definitions(context, json.loads(active_bundle.definition_json))
+        policy_version = f"{active_bundle.name}:v{active_bundle.version}"
+    else:
+        policy_matches = evaluate_policies(context, settings.policy_directory)
+        policy_version = POLICY_VERSION
     for match in policy_matches:
         reasons.append(match.reason)
         controls.extend(match.controls)
@@ -63,16 +90,68 @@ def evaluate(agent: AIAgent, asset: DataAsset, destination: str, action: str, pu
         decision = "allow"
     if not reasons:
         reasons = ["Agent, purpose, data sensitivity, and destination are within policy"]
+    exception = (
+        _matching_exception(
+            db,
+            tenant_id,
+            agent.key,
+            asset.id,
+            destination,
+            action,
+            purpose,
+            [match.policy_id for match in policy_matches],
+        )
+        if db and asset.id is not None
+        else None
+    )
+    if exception:
+        decision = exception.override_decision
+        reasons.append(f"Approved exception: {exception.reason}")
+        controls.extend(json.loads(exception.controls_json or "[]"))
     return {
         "decision": decision,
         "risk_score": risk,
         "reasons": list(dict.fromkeys(reasons)),
         "controls": sorted(set(controls)),
         "confidence": min(0.99, max(0.60, asset.classification_confidence)),
-        "policy_version": POLICY_VERSION,
+        "policy_version": policy_version,
         "expires_in_seconds": 300,
         "matched_policies": [match.policy_id for match in policy_matches],
     }
+
+
+def _matching_exception(
+    db: Session,
+    tenant_id: str,
+    agent_key: str,
+    asset_id: int,
+    destination: str,
+    action: str,
+    purpose: str,
+    matched_policy_ids: list[str],
+) -> PolicyException | None:
+    candidates = db.scalars(
+        select(PolicyException).where(
+            PolicyException.tenant_id == tenant_id,
+            PolicyException.active.is_(True),
+            PolicyException.expires_at > utc_now(),
+        )
+    )
+    for exception in candidates:
+        if exception.policy_id and exception.policy_id not in matched_policy_ids:
+            continue
+        if exception.agent_key and exception.agent_key != agent_key:
+            continue
+        if exception.asset_id and exception.asset_id != asset_id:
+            continue
+        if exception.destination and exception.destination != destination:
+            continue
+        if exception.action and exception.action != action:
+            continue
+        if exception.purpose and exception.purpose != purpose:
+            continue
+        return exception
+    return None
 
 
 def audit(db, req, result, tenant_id: str = "default"):
@@ -91,4 +170,28 @@ def audit(db, req, result, tenant_id: str = "default"):
     )
     db.add(row)
     db.commit()
+    try:
+        from app.services.integrations import queue_integration_event
+
+        queue_integration_event(
+            db,
+            tenant_id,
+            "policy.decision",
+            {
+                "audit_id": row.id,
+                "decision": result["decision"],
+                "risk_score": result["risk_score"],
+                "policy_version": result["policy_version"],
+                "matched_policies": result["matched_policies"],
+                "agent_key": req.agent_key,
+                "asset_id": req.asset_id,
+                "action": req.action,
+                "destination": req.destination,
+                "purpose": req.purpose,
+            },
+            created_by="policy-engine",
+        )
+    except Exception:
+        db.rollback()
+        logging.getLogger(__name__).exception("failed to queue policy integration delivery")
     return row

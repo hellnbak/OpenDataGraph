@@ -1,6 +1,6 @@
 # Backup and Restore
 
-OpenDataGraph v1.2 includes database and local-evidence backup tooling.
+OpenDataGraph v1.4 includes database and local-evidence backup tooling.
 
 ## Backup
 

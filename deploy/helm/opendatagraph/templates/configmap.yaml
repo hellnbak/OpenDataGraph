@@ -19,6 +19,16 @@ data:
   ODG_GITHUB_ALLOWED_HOSTS: {{ .Values.config.githubAllowedHosts | quote }}
   ODG_GITLAB_ALLOWED_HOSTS: {{ .Values.config.gitlabAllowedHosts | quote }}
   ODG_SHAREPOINT_ALLOWED_HOSTS: {{ .Values.config.sharepointAllowedHosts | quote }}
+  ODG_INTEGRATION_ALLOWED_HOSTS: {{ .Values.config.integrationAllowedHosts | quote }}
+  ODG_INTEGRATION_TIMEOUT_SECONDS: {{ .Values.config.integrationTimeoutSeconds | quote }}
+  ODG_OIDC_DISCOVERY_CACHE_SECONDS: {{ .Values.config.oidcDiscoveryCacheSeconds | quote }}
+  ODG_OIDC_HTTP_TIMEOUT_SECONDS: {{ .Values.config.oidcHttpTimeoutSeconds | quote }}
+  ODG_SCIM_BULK_MAX_OPERATIONS: {{ .Values.config.scimBulkMaxOperations | quote }}
+  ODG_EVIDENCE_DEFAULT_RETENTION_DAYS: {{ .Values.config.evidenceDefaultRetentionDays | quote }}
+  ODG_EVIDENCE_DISPOSITION_APPROVAL_REQUIRED: {{ .Values.config.evidenceDispositionApprovalRequired | quote }}
+  ODG_WORKER_SCHEDULE_BATCH_SIZE: {{ .Values.config.workerScheduleBatchSize | quote }}
+  ODG_GRAPH_MAX_DEPTH: {{ .Values.config.graphMaxDepth | quote }}
+  ODG_GRAPH_MAX_EXPORT_EDGES: {{ .Values.config.graphMaxExportEdges | quote }}
   ODG_LOG_FORMAT: {{ .Values.config.logFormat | quote }}
   ODG_METRICS_ENABLED: {{ .Values.config.metricsEnabled | quote }}
   ODG_WORKER_POLL_SECONDS: {{ .Values.config.workerPollSeconds | quote }}

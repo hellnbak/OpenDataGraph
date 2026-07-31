@@ -30,8 +30,13 @@ def load_policies(directory: str | Path) -> list[dict]:
 
 
 def evaluate_policies(context: dict, directory: str | Path) -> list[PolicyMatch]:
+    return evaluate_policy_definitions(context, load_policies(directory))
+
+
+def evaluate_policy_definitions(context: dict, policies: list[dict]) -> list[PolicyMatch]:
+    validate_policy_definitions(policies)
     matches = []
-    for policy in load_policies(directory):
+    for policy in policies:
         conditions = policy.get("match", {})
         if all(_matches(context.get(field), expected) for field, expected in conditions.items()):
             matches.append(
@@ -45,6 +50,31 @@ def evaluate_policies(context: dict, directory: str | Path) -> list[PolicyMatch]
                 )
             )
     return sorted(matches, key=lambda match: DECISION_ORDER[match.decision], reverse=True)
+
+
+def validate_policy_definitions(policies: list[dict]) -> None:
+    if not isinstance(policies, list) or not policies:
+        raise ValueError("Policy bundle must contain at least one policy")
+    identifiers = set()
+    for policy in policies:
+        if not isinstance(policy, dict):
+            raise ValueError("Each policy must be an object")
+        policy_id = policy.get("id")
+        if not isinstance(policy_id, str) or not policy_id.strip() or len(policy_id) > 160:
+            raise ValueError("Each policy requires a bounded id")
+        if policy_id in identifiers:
+            raise ValueError(f"Duplicate policy id: {policy_id}")
+        identifiers.add(policy_id)
+        if policy.get("decision") not in DECISION_ORDER:
+            raise ValueError(f"Policy {policy_id} has an invalid decision")
+        if not isinstance(policy.get("match", {}), dict):
+            raise ValueError(f"Policy {policy_id} match must be an object")
+        risk_score = policy.get("risk_score", 50)
+        if not isinstance(risk_score, int) or not 0 <= risk_score <= 100:
+            raise ValueError(f"Policy {policy_id} risk_score must be from 0 to 100")
+        controls = policy.get("controls", [])
+        if not isinstance(controls, list) or any(not isinstance(control, str) for control in controls):
+            raise ValueError(f"Policy {policy_id} controls must be strings")
 
 
 def _matches(actual, expected) -> bool:

@@ -9,6 +9,7 @@ from app.config import settings
 from app.lifecycle import calculate_lifecycle
 from app.models import ClassificationReview, ConnectorRun, DataAsset, GraphEdge, utc_now
 from app.services.search import index_asset
+from app.services.schedules import ProviderRateLimitExceeded
 from connectors.sdk import Connector
 
 
@@ -141,6 +142,8 @@ async def ingest_connector(
             failed_run.error = safe_error
             failed_run.finished_at = utc_now()
         db.commit()
+        if isinstance(exc, ProviderRateLimitExceeded):
+            raise
         raise RuntimeError(safe_error) from None
 
 

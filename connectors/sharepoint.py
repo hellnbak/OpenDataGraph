@@ -1,5 +1,5 @@
 from datetime import datetime
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from urllib.parse import quote
 
 from .security import validate_https_url
@@ -15,12 +15,14 @@ class SharePointConnector:
         drive_id: str,
         token: str,
         allowed_hosts: Iterable[str] = ("graph.microsoft.com",),
+        before_request: Callable[[], None] | None = None,
     ):
         self.account = site_id
         self.site_id = site_id
         self.drive_id = drive_id
         self.token = token
         self.allowed_hosts = tuple(allowed_hosts)
+        self.before_request = before_request
 
     def scan(self, cursor: str | None = None, max_items: int = 500) -> ScanBatch:
         import httpx
@@ -29,6 +31,8 @@ class SharePointConnector:
             cursor or f"https://graph.microsoft.com/v1.0/drives/{quote(self.drive_id)}/root/delta",
             self.allowed_hosts,
         )
+        if self.before_request:
+            self.before_request()
         response = httpx.get(url, headers={"Authorization": f"Bearer {self.token}"}, timeout=30)
         response.raise_for_status()
         payload = response.json()

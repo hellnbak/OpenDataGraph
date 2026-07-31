@@ -30,6 +30,13 @@ class Settings:
     api_keys_json = os.getenv("ODG_API_KEYS_JSON", "{}")
     oidc_issuer = os.getenv("ODG_OIDC_ISSUER", "")
     oidc_audience = os.getenv("ODG_OIDC_AUDIENCE", "")
+    oidc_jwks_url = os.getenv("ODG_OIDC_JWKS_URL", "")
+    oidc_providers_json = os.getenv("ODG_OIDC_PROVIDERS_JSON", "{}")
+    oidc_discovery_cache_seconds = _integer("ODG_OIDC_DISCOVERY_CACHE_SECONDS", 3600)
+    oidc_http_timeout_seconds = float(os.getenv("ODG_OIDC_HTTP_TIMEOUT_SECONDS", "5"))
+    scim_bearer_token = os.getenv("ODG_SCIM_BEARER_TOKEN", "")
+    scim_tokens_json = os.getenv("ODG_SCIM_TOKENS_JSON", "{}")
+    scim_bulk_max_operations = _integer("ODG_SCIM_BULK_MAX_OPERATIONS", 100)
     policy_directory = os.getenv("ODG_POLICY_DIRECTORY", "policies")
     search_backend = os.getenv("ODG_SEARCH_BACKEND", "database").lower()
     opensearch_url = os.getenv("ODG_OPENSEARCH_URL", "")
@@ -42,6 +49,11 @@ class Settings:
     evidence_endpoint_url = os.getenv("ODG_EVIDENCE_ENDPOINT_URL", "")
     evidence_region = os.getenv("ODG_EVIDENCE_REGION", "")
     evidence_max_bytes = _integer("ODG_EVIDENCE_MAX_BYTES", 10 * 1024 * 1024)
+    evidence_default_retention_days = _integer("ODG_EVIDENCE_DEFAULT_RETENTION_DAYS", 365)
+    evidence_disposition_approval_required = _boolean(
+        "ODG_EVIDENCE_DISPOSITION_APPROVAL_REQUIRED",
+        False,
+    )
     secret_file_roots = tuple(
         Path(item.strip()).expanduser().resolve()
         for item in os.getenv("ODG_SECRET_FILE_ROOTS", "/run/secrets,./secrets").split(",")
@@ -62,8 +74,17 @@ class Settings:
         for item in os.getenv("ODG_SHAREPOINT_ALLOWED_HOSTS", "graph.microsoft.com").split(",")
         if item.strip()
     )
+    integration_allowed_hosts = tuple(
+        item.strip().lower()
+        for item in os.getenv("ODG_INTEGRATION_ALLOWED_HOSTS", "").split(",")
+        if item.strip()
+    )
+    integration_timeout_seconds = float(os.getenv("ODG_INTEGRATION_TIMEOUT_SECONDS", "10"))
     worker_poll_seconds = float(os.getenv("ODG_WORKER_POLL_SECONDS", "2"))
     worker_claim_timeout_seconds = _integer("ODG_WORKER_CLAIM_TIMEOUT_SECONDS", 900)
+    worker_schedule_batch_size = _integer("ODG_WORKER_SCHEDULE_BATCH_SIZE", 50)
+    graph_max_depth = _integer("ODG_GRAPH_MAX_DEPTH", 5)
+    graph_max_export_edges = _integer("ODG_GRAPH_MAX_EXPORT_EDGES", 10_000)
     log_level = os.getenv("ODG_LOG_LEVEL", "INFO").upper()
     log_format = os.getenv("ODG_LOG_FORMAT", "json").lower()
     metrics_enabled = _boolean("ODG_METRICS_ENABLED", True)
