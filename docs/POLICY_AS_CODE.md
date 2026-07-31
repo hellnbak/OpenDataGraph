@@ -25,7 +25,7 @@ The engine supports asset sensitivity, destination type, agent status, action, a
 
 Decisions are ordered `allow < conditional < deny`. Matched rules contribute reasons, controls, and risk. The result also considers agent approval, sensitivity ceiling, domain scope, destination approval, and asset exposure.
 
-Standard controls include `tenant-context`, and policy audits remain in the authenticated tenant. v1.4 includes versioned bundles, structured diffs, delegated review, activation, rollback, expiring exceptions, and renewal. See [Policy governance](POLICY_GOVERNANCE.md).
+Standard controls include `tenant-context`, and policy audits remain in the authenticated tenant. v1.5 includes versioned bundles, structured diffs, delegated review, activation, rollback, expiring exceptions, renewal, and unified operational review tasks. See [Policy governance](POLICY_GOVERNANCE.md).
 
 ## Simulation
 

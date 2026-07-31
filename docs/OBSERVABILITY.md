@@ -1,6 +1,6 @@
 # Observability
 
-OpenDataGraph v1.4 exposes health, readiness, metrics, structured logs, delivery dashboards, and optional traces.
+OpenDataGraph v1.5 exposes health, readiness, metrics, structured logs, delivery dashboards, governance SLA metrics, lifecycle reporting, and optional traces.
 
 ## Endpoints
 
@@ -24,4 +24,6 @@ The FastAPI instrumentation excludes health, readiness, and metrics paths. OpenD
 
 ## Operational dashboards
 
-`GET /api/v1/integrations/dashboard` returns tenant-scoped delivery totals, status counts, success rate, and endpoint summaries. The console summary also surfaces dead letters and pending evidence dispositions. Alert on dead letters, repeatedly failed governance jobs, stalled deprovisioning workflows, and growing disposition queues.
+`GET /api/v1/integrations/dashboard` returns tenant-scoped delivery totals, status counts, success rate, and endpoint summaries. `GET /api/v1/governance/sla` reports review deadlines and resolution time. `GET /api/v1/service-accounts/lifecycle` reports stale accounts, expiry, and rotations. The console summary surfaces these queues with ownership work and graph exports.
+
+Alert on dead letters, overdue governance reviews, repeatedly failed governance or export jobs, stale service accounts, expiring credentials, stalled deprovisioning workflows, growing disposition or remediation queues, and export storage failures.

@@ -34,6 +34,8 @@ Data owners request deletion through `POST /api/v1/evidence/{evidence_id}/dispos
 
 Outside development mode, the requester cannot approve the same disposition. Approval queues `evidence.disposition`. Before deletion, the worker rechecks application legal hold and S3 object retention or legal hold. The disposition and evidence record retain who requested, approved, rejected, or executed the action.
 
+Disposition requests also create unified governance review tasks. Approval or rejection completes the task; the disposition remains the authoritative execution state. See [Governance operations](GOVERNANCE_OPERATIONS.md).
+
 ## Production controls
 
 Use private versioned buckets, encryption, public-access blocking, workload identity, narrowly scoped object permissions, lifecycle policy, backup, and restore testing. Align bucket retention with OpenDataGraph retention. Application metadata cannot shorten compliance-mode Object Lock.

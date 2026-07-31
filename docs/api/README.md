@@ -70,6 +70,9 @@ Synchronous dynamic connector types are `github`, `gitlab`, and `sharepoint`. Qu
 - `GET /api/v1/graph/query`
 - `GET /api/v1/graph/paths`
 - `GET /api/v1/graph/export`
+- `POST|GET /api/v1/graph/exports`
+- `GET /api/v1/graph/exports/{export_id}`
+- `GET /api/v1/graph/exports/{export_id}/download`
 
 ## Evidence
 
@@ -94,10 +97,37 @@ Synchronous dynamic connector types are `github`, `gitlab`, and `sharepoint`. Qu
 - `GET /api/v1/integrations/dashboard`
 - `POST /api/v1/integrations/deliveries/{delivery_id}/replay`
 
+Endpoints choose `native`, `cloudevents`, `cef`, or `splunk-hec` event format. Existing endpoints default to `native`.
+
+## Service accounts
+
+- `POST|GET /api/v1/service-accounts`
+- `GET /api/v1/service-accounts/lifecycle`
+- `GET /api/v1/service-accounts/{account_id}`
+- `POST /api/v1/service-accounts/{account_id}/rotate`
+- `POST /api/v1/service-accounts/rotations/{rotation_id}/complete`
+- `DELETE /api/v1/service-accounts/{account_id}`
+
+Creation and rotation return a clear credential exactly once. Read responses never expose credential salts or verifiers.
+
+## Governance and ownership
+
+- `GET /api/v1/governance/reviews`
+- `PATCH /api/v1/governance/reviews/{task_id}/assign`
+- `GET /api/v1/governance/sla`
+- `POST /api/v1/governance/notifications/jobs`
+- `POST|GET /api/v1/ownership/campaigns`
+- `GET /api/v1/ownership/campaigns/{campaign_id}`
+- `POST /api/v1/ownership/campaigns/{campaign_id}/launch`
+- `GET /api/v1/ownership/campaigns/{campaign_id}/assignments`
+- `POST /api/v1/ownership/assignments/{assignment_id}/attest`
+- `PATCH /api/v1/ownership/assignments/{assignment_id}/remediation`
+- `POST /api/v1/ownership/assignments/{assignment_id}/resolve`
+
 ## Authentication
 
 - `GET /api/v1/auth/configuration`
 
-When authentication is enabled, send a tenant-bound key in `X-API-Key` or a signed bearer token from a configured OIDC provider. Data-bearing APIs never accept tenant selection from the request.
+When authentication is enabled, send a tenant-bound key in `X-API-Key`, a service-account credential in `X-Service-Account-Key`, or a signed bearer token from a configured OIDC provider. Data-bearing APIs never accept tenant selection from the request.
 
 SCIM provisioning uses dedicated `/scim/v2/Users`, `/scim/v2/Groups`, and `/scim/v2/Bulk` endpoints with a separate tenant-bound bearer token. It never accepts a tenant header. Auditors inspect durable user offboarding through `GET /api/v1/identity/deprovisioning`.

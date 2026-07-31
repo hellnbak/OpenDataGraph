@@ -2,7 +2,7 @@ replicaCount: 2
 
 image:
   repository: opendatagraph
-  tag: "1.4.0"
+  tag: "1.5.0"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -61,11 +61,23 @@ config:
   oidcDiscoveryCacheSeconds: "3600"
   oidcHttpTimeoutSeconds: "5"
   scimBulkMaxOperations: "100"
+  serviceAccountCredentialDays: "90"
+  serviceAccountRotationGraceHours: "24"
+  serviceAccountStaleDays: "30"
   evidenceDefaultRetentionDays: "365"
   evidenceDispositionApprovalRequired: "true"
   workerScheduleBatchSize: "50"
   graphMaxDepth: "5"
   graphMaxExportEdges: "10000"
+  graphAsyncExportMaxEdges: "250000"
+  graphExportMaxBytes: "104857600"
+  graphExportBackend: s3
+  graphExportPrefix: graph-exports
+  graphExportEndpointUrl: ""
+  graphExportRegion: ""
+  graphExportAllowedSinkBuckets: ""
+  governanceDefaultSlaHours: "48"
+  governanceDueSoonHours: "24"
   logFormat: json
   metricsEnabled: "true"
   workerPollSeconds: "2"

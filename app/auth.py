@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 
 from fastapi import Depends, Header, HTTPException
+from sqlalchemy.orm import Session
 
 from .config import settings
+from .database import get_db
 
 
 ROLES = ["read-only", "auditor", "analyst", "connector-operator", "data-owner", "administrator"]
@@ -25,16 +27,32 @@ class Principal:
 def current_principal(
     x_api_key: str | None = Header(default=None),
     authorization: str | None = Header(default=None),
+    x_service_account_key: str | None = Header(default=None),
+    db: Session = Depends(get_db),
 ) -> Principal:
     if settings.auth_disabled:
         return Principal(subject="development", role="administrator", tenant_id=settings.default_tenant)
     x_api_key = x_api_key if isinstance(x_api_key, str) else None
     authorization = authorization if isinstance(authorization, str) else None
+    x_service_account_key = (
+        x_service_account_key if isinstance(x_service_account_key, str) else None
+    )
     if authorization:
         scheme, _, token = authorization.partition(" ")
         if scheme.lower() != "bearer" or not token:
             raise HTTPException(401, "Authorization must use a Bearer token")
         return _oidc_principal(token)
+    if x_service_account_key:
+        from app.services.service_accounts import authenticate_service_account
+
+        identity = authenticate_service_account(db, x_service_account_key)
+        if not identity:
+            raise HTTPException(401, "A valid service account key is required")
+        return Principal(
+            subject=identity["subject"],
+            role=identity["role"],
+            tenant_id=identity["tenant_id"],
+        )
     return _api_key_principal(x_api_key)
 
 
@@ -247,4 +265,5 @@ def oidc_configuration() -> dict:
         ],
         "validation": "signature-issuer-audience-expiry",
         "discovery_cache_seconds": settings.oidc_discovery_cache_seconds,
+        "service_accounts": True,
     }

@@ -1,6 +1,6 @@
 # Scheduling and Provider Budgets
 
-OpenDataGraph v1.4 runs tenant-scoped connector scans on fixed intervals or five-field cron calendars. Workers atomically claim due schedules and enqueue the existing reference-only `connector.scan` job.
+OpenDataGraph v1.5 runs tenant-scoped connector scans on fixed intervals or five-field cron calendars. Workers atomically claim due schedules and enqueue the existing reference-only `connector.scan` job.
 
 ## Schedule types
 

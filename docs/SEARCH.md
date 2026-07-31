@@ -1,6 +1,6 @@
 # Search
 
-OpenDataGraph v1.4 supports database search and optional OpenSearch metadata indexing.
+OpenDataGraph v1.5 supports database search and optional OpenSearch metadata indexing.
 
 ## Configuration
 

@@ -1,6 +1,6 @@
 # Background Jobs
 
-OpenDataGraph v1.4 stores durable jobs in the primary database and executes them with `python -m app.worker`.
+OpenDataGraph v1.5 stores durable jobs in the primary database and executes them with `python -m app.worker`.
 
 ## Supported jobs
 
@@ -10,6 +10,8 @@ OpenDataGraph v1.4 stores durable jobs in the primary database and executes them
 - `evidence.disposition`
 - `identity.deprovision`
 - `integration.deliver`
+- `governance.sla-notify`
+- `graph.export`
 
 Submit connector work through:
 
@@ -31,7 +33,9 @@ The file must be within `ODG_SECRET_FILE_ROOTS`. The worker resolves the value o
 
 Jobs move through `pending`, `running`, `completed`, `failed`, or `cancelled`. Failed jobs retry with bounded exponential backoff until `max_attempts`. Worker startup recovers claims older than `ODG_WORKER_CLAIM_TIMEOUT_SECONDS`.
 
-Cancellation is cooperative. A pending job cancels immediately; a running connector page or webhook request completes before final state is observed. Provider-budget exhaustion returns a connector job to pending until its shared window resets. Integration delivery that exhausts attempts becomes a dead letter. Evidence disposition and identity deprovisioning keep durable governance state separate from job state.
+Cancellation is cooperative. A pending job cancels immediately; a running connector page, webhook request, governance notification batch, or graph serialization completes before final state is observed. Provider-budget exhaustion returns a connector job to pending until its shared window resets. Integration delivery that exhausts attempts becomes a dead letter. Evidence disposition, identity deprovisioning, governance review, and graph export records keep durable domain state separate from job state.
+
+Governance notification payloads contain only a bounded limit. Graph export payloads contain only the tenant-scoped export identifier; format, filters, sink, and bounds are persisted on the export record.
 
 ## APIs
 

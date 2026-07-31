@@ -22,4 +22,4 @@ ODG_API_URL=http://localhost:8080 ODG_API_KEY=development-key python mcp_server.
 
 `ODG_API_KEY` is optional only when application authentication is disabled. When enabled, the key determines both role and tenant; MCP tool calls cannot select another tenant.
 
-The v1.4 server uses the SDK's default local transport. It does not delete source data, change provider permissions, upload evidence, approve dispositions, replay integrations, or expose connector or integration secret references.
+The v1.5 server uses the SDK's default local transport. It does not delete source data, change provider permissions, upload evidence, approve dispositions, replay integrations, manage service-account credentials, create exports, or expose connector or integration secret references.

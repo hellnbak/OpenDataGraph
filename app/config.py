@@ -37,6 +37,12 @@ class Settings:
     scim_bearer_token = os.getenv("ODG_SCIM_BEARER_TOKEN", "")
     scim_tokens_json = os.getenv("ODG_SCIM_TOKENS_JSON", "{}")
     scim_bulk_max_operations = _integer("ODG_SCIM_BULK_MAX_OPERATIONS", 100)
+    service_account_credential_days = _integer("ODG_SERVICE_ACCOUNT_CREDENTIAL_DAYS", 90)
+    service_account_rotation_grace_hours = _integer(
+        "ODG_SERVICE_ACCOUNT_ROTATION_GRACE_HOURS",
+        24,
+    )
+    service_account_stale_days = _integer("ODG_SERVICE_ACCOUNT_STALE_DAYS", 30)
     policy_directory = os.getenv("ODG_POLICY_DIRECTORY", "policies")
     search_backend = os.getenv("ODG_SEARCH_BACKEND", "database").lower()
     opensearch_url = os.getenv("ODG_OPENSEARCH_URL", "")
@@ -85,6 +91,23 @@ class Settings:
     worker_schedule_batch_size = _integer("ODG_WORKER_SCHEDULE_BATCH_SIZE", 50)
     graph_max_depth = _integer("ODG_GRAPH_MAX_DEPTH", 5)
     graph_max_export_edges = _integer("ODG_GRAPH_MAX_EXPORT_EDGES", 10_000)
+    graph_async_export_max_edges = _integer("ODG_GRAPH_ASYNC_EXPORT_MAX_EDGES", 250_000)
+    graph_export_max_bytes = _integer("ODG_GRAPH_EXPORT_MAX_BYTES", 100 * 1024 * 1024)
+    graph_export_backend = os.getenv("ODG_GRAPH_EXPORT_BACKEND", "local").lower()
+    graph_export_local_directory = Path(
+        os.getenv("ODG_GRAPH_EXPORT_LOCAL_DIRECTORY", "./exports")
+    )
+    graph_export_bucket = os.getenv("ODG_GRAPH_EXPORT_BUCKET", "")
+    graph_export_prefix = os.getenv("ODG_GRAPH_EXPORT_PREFIX", "graph-exports")
+    graph_export_endpoint_url = os.getenv("ODG_GRAPH_EXPORT_ENDPOINT_URL", "")
+    graph_export_region = os.getenv("ODG_GRAPH_EXPORT_REGION", "")
+    graph_export_allowed_sink_buckets = tuple(
+        item.strip()
+        for item in os.getenv("ODG_GRAPH_EXPORT_ALLOWED_SINK_BUCKETS", "").split(",")
+        if item.strip()
+    )
+    governance_default_sla_hours = _integer("ODG_GOVERNANCE_DEFAULT_SLA_HOURS", 48)
+    governance_due_soon_hours = _integer("ODG_GOVERNANCE_DUE_SOON_HOURS", 24)
     log_level = os.getenv("ODG_LOG_LEVEL", "INFO").upper()
     log_format = os.getenv("ODG_LOG_FORMAT", "json").lower()
     metrics_enabled = _boolean("ODG_METRICS_ENABLED", True)

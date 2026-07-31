@@ -18,6 +18,8 @@ from app.services.evidence import (
     mark_disposition_error,
     purge_expired_evidence,
 )
+from app.services.governance import notify_overdue_reviews
+from app.services.graph_exports import execute_graph_export, mark_graph_export_error
 from app.services.identity import execute_deprovision, mark_deprovision_error
 from app.services.integrations import deliver_integration, mark_delivery_dead_letter
 from app.services.schedules import ProviderRateLimitExceeded, provider_request_guard
@@ -37,6 +39,8 @@ SUPPORTED_JOB_TYPES = {
     "evidence.disposition",
     "identity.deprovision",
     "integration.deliver",
+    "governance.sla-notify",
+    "graph.export",
 }
 SUPPORTED_CONNECTORS = {"aws-s3", "google-drive", "github", "gitlab", "sharepoint"}
 
@@ -136,6 +140,18 @@ def execute_job(db: Session, job: BackgroundJob) -> None:
             )
         elif job.job_type == "integration.deliver":
             result = deliver_integration(db, job.tenant_id, payload["delivery_id"])
+        elif job.job_type == "governance.sla-notify":
+            result = notify_overdue_reviews(
+                db,
+                job.tenant_id,
+                int(payload.get("limit", 500)),
+            )
+        elif job.job_type == "graph.export":
+            result = execute_graph_export(
+                db,
+                job.tenant_id,
+                payload["export_id"],
+            )
         else:
             raise RuntimeError(f"Unsupported job type: {job.job_type}")
         db.refresh(job)
@@ -180,6 +196,13 @@ def execute_job(db: Session, job: BackgroundJob) -> None:
                 db,
                 job.tenant_id,
                 payload["disposition_id"],
+                job.error,
+            )
+        elif job.job_type == "graph.export" and payload.get("export_id"):
+            mark_graph_export_error(
+                db,
+                job.tenant_id,
+                payload["export_id"],
                 job.error,
             )
         db.commit()
@@ -279,6 +302,14 @@ def validate_job_payload(job_type: str, payload: dict) -> None:
     elif job_type == "evidence.disposition":
         if set(payload) != {"disposition_id"} or not isinstance(payload.get("disposition_id"), str):
             raise ValueError("Evidence disposition jobs require only disposition_id")
+    elif job_type == "graph.export":
+        if set(payload) != {"export_id"} or not isinstance(payload.get("export_id"), str):
+            raise ValueError("Graph export jobs require only export_id")
+    elif job_type == "governance.sla-notify":
+        if set(payload) != {"limit"} or not isinstance(payload.get("limit"), int):
+            raise ValueError("Governance notification jobs require only an integer limit")
+        if not 1 <= payload["limit"] <= 5000:
+            raise ValueError("Governance notification job limit must be 1 to 5000")
 
 
 def _build_connector(payload: dict, db: Session, tenant_id: str):

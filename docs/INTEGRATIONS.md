@@ -1,12 +1,21 @@
 # Alert and Enforcement Integrations
 
-OpenDataGraph sends bounded policy, identity, and test events to approved HTTPS webhooks. It does not mutate source systems.
+OpenDataGraph sends bounded policy, identity, governance, graph-export, and test events to approved HTTPS webhooks. It does not mutate source systems.
 
 ## Endpoint controls
 
-Administrators create endpoints with an allowlisted URL, `observe` or `enforce` mode, subscribed event names, and optional worker-resolved signing secret. `ODG_INTEGRATION_ALLOWED_HOSTS` must contain every permitted destination host.
+Administrators create endpoints with an allowlisted URL, `observe` or `enforce` mode, subscribed event names, event format, and optional worker-resolved secret. `ODG_INTEGRATION_ALLOWED_HOSTS` must contain every permitted destination host.
 
-Secrets use `env:` or `file:` references and are never stored in delivery payloads. When configured, workers sign the exact request body using HMAC-SHA256 in `X-OpenDataGraph-Signature`.
+Events are limited to 256 KiB before delivery records and jobs are created. Supported formats are:
+
+- `native`: canonical OpenDataGraph JSON;
+- `cloudevents`: CloudEvents 1.0 structured JSON;
+- `cef`: Common Event Format text with escaped extension values;
+- `splunk-hec`: Splunk HTTP Event Collector JSON.
+
+Secrets use `env:` or `file:` references and are never stored in delivery payloads. Native, CloudEvents, and CEF workers sign the exact request body using HMAC-SHA256 in `X-OpenDataGraph-Signature`. Splunk HEC uses the resolved secret in `Authorization: Splunk ...`; use a dedicated least-privilege HEC token.
+
+Every delivery includes `X-OpenDataGraph-Delivery`, `X-OpenDataGraph-Event`, `X-OpenDataGraph-Mode`, and `X-OpenDataGraph-Format`.
 
 ## Delivery lifecycle
 

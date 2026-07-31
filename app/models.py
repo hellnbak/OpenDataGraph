@@ -361,6 +361,7 @@ class IntegrationEndpoint(TenantMixin, Base):
     name: Mapped[str] = mapped_column(String(160), index=True)
     endpoint_type: Mapped[str] = mapped_column(String(40), default="webhook")
     mode: Mapped[str] = mapped_column(String(40), default="observe")
+    event_format: Mapped[str] = mapped_column(String(40), default="native", index=True)
     url: Mapped[str] = mapped_column(String(2048))
     secret_ref: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     events_json: Mapped[str] = mapped_column(Text, default="[]")
@@ -427,3 +428,156 @@ class EvidenceDisposition(TenantMixin, Base):
     executed_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
     executed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ServiceAccount(TenantMixin, Base):
+    __tablename__ = "service_accounts"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "account_id", name="uq_service_account_tenant_id"),
+        UniqueConstraint("tenant_id", "name", name="uq_service_account_tenant_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[str] = mapped_column(String(36), index=True)
+    name: Mapped[str] = mapped_column(String(160), index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    owner: Mapped[str] = mapped_column(String(320), index=True)
+    role: Mapped[str] = mapped_column(String(40))
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    last_authenticated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ServiceAccountCredential(TenantMixin, Base):
+    __tablename__ = "service_account_credentials"
+    __table_args__ = (
+        UniqueConstraint("credential_id", name="uq_service_credential_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    credential_id: Mapped[str] = mapped_column(String(36), index=True)
+    account_id: Mapped[str] = mapped_column(String(36), index=True)
+    secret_salt: Mapped[str] = mapped_column(String(64))
+    secret_hash: Mapped[str] = mapped_column(String(128))
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    issued_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    retire_after: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class CredentialRotation(TenantMixin, Base):
+    __tablename__ = "credential_rotations"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "rotation_id", name="uq_credential_rotation_tenant_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    rotation_id: Mapped[str] = mapped_column(String(36), index=True)
+    account_id: Mapped[str] = mapped_column(String(36), index=True)
+    old_credential_id: Mapped[str] = mapped_column(String(36), index=True)
+    new_credential_id: Mapped[str] = mapped_column(String(36), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="grace-period", index=True)
+    grace_ends_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    requested_by: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class GovernanceReviewTask(TenantMixin, Base):
+    __tablename__ = "governance_review_tasks"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "task_id", name="uq_governance_task_tenant_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(36), index=True)
+    task_type: Mapped[str] = mapped_column(String(80), index=True)
+    subject_id: Mapped[str] = mapped_column(String(160), index=True)
+    title: Mapped[str] = mapped_column(String(320))
+    priority: Mapped[str] = mapped_column(String(40), default="normal", index=True)
+    status: Mapped[str] = mapped_column(String(40), default="open", index=True)
+    assigned_to: Mapped[str | None] = mapped_column(String(320), nullable=True, index=True)
+    details_json: Mapped[str] = mapped_column(Text, default="{}")
+    due_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    created_by: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    completed_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    sla_notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class OwnershipCampaign(TenantMixin, Base):
+    __tablename__ = "ownership_campaigns"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "campaign_id", name="uq_ownership_campaign_tenant_id"),
+        UniqueConstraint("tenant_id", "name", name="uq_ownership_campaign_tenant_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    campaign_id: Mapped[str] = mapped_column(String(36), index=True)
+    name: Mapped[str] = mapped_column(String(160), index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
+    scope_json: Mapped[str] = mapped_column(Text, default="{}")
+    due_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    created_by: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    launched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class OwnershipAssignment(TenantMixin, Base):
+    __tablename__ = "ownership_assignments"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "assignment_id", name="uq_ownership_assignment_tenant_id"),
+        UniqueConstraint(
+            "tenant_id",
+            "campaign_id",
+            "asset_id",
+            name="uq_ownership_assignment_campaign_asset",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    assignment_id: Mapped[str] = mapped_column(String(36), index=True)
+    campaign_id: Mapped[str] = mapped_column(String(36), index=True)
+    asset_id: Mapped[int] = mapped_column(Integer, index=True)
+    owner: Mapped[str] = mapped_column(String(320), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    attested_owner: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    attestation_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    remediation_action: Mapped[str | None] = mapped_column(Text, nullable=True)
+    remediation_due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    attested_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    attested_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    resolved_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+
+
+class GraphExport(TenantMixin, Base):
+    __tablename__ = "graph_exports"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "export_id", name="uq_graph_export_tenant_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    export_id: Mapped[str] = mapped_column(String(36), index=True)
+    export_format: Mapped[str] = mapped_column(String(40))
+    relationships_json: Mapped[str] = mapped_column(Text, default="[]")
+    max_edges: Mapped[int] = mapped_column(Integer, default=250_000)
+    sink_uri: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    edge_count: Mapped[int] = mapped_column(Integer, default=0)
+    truncated: Mapped[bool] = mapped_column(Boolean, default=False)
+    storage_uri: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

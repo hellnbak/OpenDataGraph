@@ -13,6 +13,8 @@ python -m compileall -q app connectors migrations mcp_server.py
 uvicorn app.main:app --reload --port 8080
 ```
 
+For bounded qualification, run `python -m app.benchmark`. Use `python -m app.soak` only against an approved running test environment; it performs read-only health, readiness, and summary requests. See [Performance qualification](../PERFORMANCE.md).
+
 Run a worker separately:
 
 ```bash

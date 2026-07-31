@@ -35,3 +35,18 @@ Path results preserve each underlying edge and explain how the current node reac
 `relationships` optionally filters edge types. `limit` is bounded by `ODG_GRAPH_MAX_EXPORT_EDGES`. CSV and GraphML responses use attachment headers. Export never includes another tenant's edges.
 
 The relational design avoids a mandatory graph database. Bounded traversal and export are not a replacement for external graph analytics at unbounded scale. See [OpenLineage](OPENLINEAGE.md).
+
+## Asynchronous export
+
+Larger bounded exports use durable worker jobs:
+
+- `POST /api/v1/graph/exports`
+- `GET /api/v1/graph/exports`
+- `GET /api/v1/graph/exports/{export_id}`
+- `GET /api/v1/graph/exports/{export_id}/download`
+
+The request selects JSON, CSV, or GraphML, optional relationship filters, and a bounded edge limit. `ODG_GRAPH_ASYNC_EXPORT_MAX_EDGES` caps the requested limit and `ODG_GRAPH_EXPORT_MAX_BYTES` caps the artifact. Completed records store edge count, truncation state, size, SHA-256, storage URI, and completion time.
+
+`ODG_GRAPH_EXPORT_BACKEND` selects local or S3-compatible storage. Local API and worker processes must share `ODG_GRAPH_EXPORT_LOCAL_DIRECTORY`. S3 uses `ODG_GRAPH_EXPORT_BUCKET`, optional endpoint and region settings, and workload identity.
+
+An optional external `sink_uri` must use `s3://bucket/key`, contain no credentials or query parameters, and name a bucket in `ODG_GRAPH_EXPORT_ALLOWED_SINK_BUCKETS`. External sinks need separate retention, access, and cleanup governance.

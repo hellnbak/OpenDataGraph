@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -10,6 +11,10 @@ from app.config import settings
 from app.models import BackgroundJob, IntegrationDelivery, IntegrationEndpoint, utc_now
 from app.services.connectors import safe_connector_error
 from connectors.security import validate_https_url
+
+
+INTEGRATION_EVENT_FORMATS = {"native", "cloudevents", "cef", "splunk-hec"}
+MAX_INTEGRATION_PAYLOAD_BYTES = 256 * 1024
 
 
 def create_endpoint(
@@ -22,15 +27,19 @@ def create_endpoint(
     events: list[str],
     enabled: bool,
     created_by: str,
+    event_format: str = "native",
 ) -> IntegrationEndpoint:
     if not settings.integration_allowed_hosts:
         raise ValueError("ODG_INTEGRATION_ALLOWED_HOSTS must be configured")
+    if event_format not in INTEGRATION_EVENT_FORMATS:
+        raise ValueError("Unsupported integration event format")
     validated_url = validate_https_url(url, settings.integration_allowed_hosts)
     endpoint = IntegrationEndpoint(
         tenant_id=tenant_id,
         endpoint_id=str(uuid4()),
         name=name,
         mode=mode,
+        event_format=event_format,
         url=validated_url,
         secret_ref=secret_ref,
         events_json=json.dumps(sorted(set(events))),
@@ -53,6 +62,7 @@ def queue_integration_event(
 ) -> list[IntegrationDelivery]:
     from app.services.jobs import enqueue_job
 
+    payload_json = _serialize_payload(payload)
     endpoints = list(
         db.scalars(
             select(IntegrationEndpoint).where(
@@ -73,7 +83,7 @@ def queue_integration_event(
             delivery_id=str(uuid4()),
             endpoint_id=endpoint.endpoint_id,
             event_type=event_type,
-            payload_json=json.dumps(payload),
+            payload_json=payload_json,
         )
         db.add(delivery)
         db.commit()
@@ -113,17 +123,21 @@ def deliver_integration(db: Session, tenant_id: str, delivery_id: str) -> dict:
     if not endpoint:
         raise ValueError("Integration endpoint is missing or disabled")
     url = validate_https_url(endpoint.url, settings.integration_allowed_hosts)
-    body = delivery.payload_json.encode()
+    event_format, content_type, body = _format_delivery(endpoint, delivery)
     headers = {
-        "Content-Type": "application/json",
+        "Content-Type": content_type,
         "X-OpenDataGraph-Delivery": delivery.delivery_id,
         "X-OpenDataGraph-Event": delivery.event_type,
         "X-OpenDataGraph-Mode": endpoint.mode,
+        "X-OpenDataGraph-Format": event_format,
     }
     if endpoint.secret_ref:
         secret = resolve_secret(endpoint.secret_ref)
-        digest = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-        headers["X-OpenDataGraph-Signature"] = f"sha256={digest}"
+        if event_format == "splunk-hec":
+            headers["Authorization"] = f"Splunk {secret}"
+        else:
+            digest = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+            headers["X-OpenDataGraph-Signature"] = f"sha256={digest}"
     delivery.attempts += 1
     delivery.last_attempted_at = utc_now()
     db.commit()
@@ -153,7 +167,82 @@ def deliver_integration(db: Session, tenant_id: str, delivery_id: str) -> dict:
         "status": delivery.status,
         "response_code": delivery.response_code,
         "mode": endpoint.mode,
+        "event_format": event_format,
     }
+
+
+def _format_delivery(
+    endpoint: IntegrationEndpoint,
+    delivery: IntegrationDelivery,
+) -> tuple[str, str, bytes]:
+    event_format = endpoint.event_format or "native"
+    if event_format not in INTEGRATION_EVENT_FORMATS:
+        raise ValueError("Unsupported integration event format")
+    payload = json.loads(delivery.payload_json)
+    timestamp = delivery.created_at.replace(tzinfo=UTC).isoformat()
+    if event_format == "native":
+        body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+        return event_format, "application/json", body
+    if event_format == "cloudevents":
+        envelope = {
+            "specversion": "1.0",
+            "id": delivery.delivery_id,
+            "source": "urn:opendatagraph:integration",
+            "type": f"com.opendatagraph.{delivery.event_type}",
+            "subject": endpoint.endpoint_id,
+            "time": timestamp,
+            "datacontenttype": "application/json",
+            "data": payload,
+        }
+        body = json.dumps(envelope, separators=(",", ":"), sort_keys=True).encode()
+        return event_format, "application/cloudevents+json", body
+    if event_format == "splunk-hec":
+        envelope = {
+            "time": delivery.created_at.replace(tzinfo=UTC).timestamp(),
+            "host": "opendatagraph",
+            "source": "opendatagraph",
+            "sourcetype": f"opendatagraph:{delivery.event_type}",
+            "event": payload,
+            "fields": {
+                "tenant_id": delivery.tenant_id,
+                "delivery_id": delivery.delivery_id,
+                "endpoint_id": endpoint.endpoint_id,
+            },
+        }
+        body = json.dumps(envelope, separators=(",", ":"), sort_keys=True).encode()
+        return event_format, "application/json", body
+    extension = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+    cef = (
+        "CEF:0|OpenDataGraph|OpenDataGraph|1.5.0|"
+        f"{_cef_escape(delivery.event_type)}|{_cef_escape(delivery.event_type)}|5|"
+        f"rt={_cef_escape(timestamp)} "
+        f"externalId={_cef_escape(delivery.delivery_id)} "
+        f"cs1Label=tenantId cs1={_cef_escape(delivery.tenant_id)} "
+        f"cs2Label=payload cs2={_cef_escape(extension)}"
+    )
+    return event_format, "text/plain; charset=utf-8", cef.encode()
+
+
+def _cef_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("|", "\\|").replace("=", "\\=")
+
+
+def _json_default(value):
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=UTC).isoformat() if value.tzinfo is None else value.isoformat()
+    raise TypeError(f"Object of type {value.__class__.__name__} is not JSON serializable")
+
+
+def _serialize_payload(payload: dict) -> str:
+    payload_json = json.dumps(
+        payload,
+        default=_json_default,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    if len(payload_json.encode()) > MAX_INTEGRATION_PAYLOAD_BYTES:
+        raise ValueError("Integration event payload exceeds 256 KiB")
+    return payload_json
 
 
 def mark_delivery_dead_letter(
@@ -224,12 +313,13 @@ def replay_delivery(
                 "replayed_by": requested_by,
             }
         )
+    payload_json = _serialize_payload(payload)
     delivery = IntegrationDelivery(
         tenant_id=tenant_id,
         delivery_id=str(uuid4()),
         endpoint_id=original.endpoint_id,
         event_type=original.event_type,
-        payload_json=json.dumps(payload),
+        payload_json=payload_json,
         replayed_from=original.delivery_id,
     )
     db.add(delivery)

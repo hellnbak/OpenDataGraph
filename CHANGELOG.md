@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.5.0 - 2026-07-30
+
+### Added
+
+- Tenant-scoped service accounts with one-time PBKDF2-backed credentials, bounded lifetimes, rotation grace periods, explicit revocation, and lifecycle reporting
+- Unified policy and evidence governance reviews with assignment, deadlines, SLA metrics, and allowlisted overdue notifications
+- Native JSON, CloudEvents 1.0, CEF, and Splunk HEC integration event adapters with bounded payloads
+- Catalog ownership campaigns, bounded asset assignment, attestations, owner correction, remediation deadlines, and completion tracking
+- Asynchronous JSON, CSV, and GraphML graph export jobs with SHA-256 verification, local or S3 storage, and allowlisted S3 analytics sinks
+- Deterministic local benchmark and bounded read-only soak tools
+- Upgrade compatibility and performance qualification documentation
+- Alembic upgrade from v1.4 and deterministic tests for v1.5 commercial-readiness controls
+
+### Changed
+
+- Updated application, console, chart, documentation, deployment defaults, and release packaging versions to `1.5.0`
+- Extended summary metrics and the operational console for service accounts, governance reviews, ownership work, and graph exports
+- Expanded Docker Compose, Helm, and AWS runtime configuration for graph export storage and v1.5 lifecycle controls
+- Preserved all prior catalog, connector, classification, policy, AI activity, identity, evidence, integration, graph, search, job, and observability capabilities
+
 ## 1.4.0 - 2026-07-30
 
 ### Added

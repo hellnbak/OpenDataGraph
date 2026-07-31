@@ -1,6 +1,6 @@
 # Authentication and Tenancy
 
-OpenDataGraph v1.4 binds each API-key or validated OIDC principal to a role and tenant.
+OpenDataGraph v1.5 binds each API-key, service account, or validated OIDC principal to a role and tenant.
 
 ## Local mode
 
@@ -21,6 +21,12 @@ Set `ODG_AUTH_DISABLED=false` and provide a JSON object through an approved secr
 ```
 
 Send the key in `X-API-Key`.
+
+## Service accounts
+
+Administrators can issue application-managed automation credentials without editing static API-key configuration. Send the one-time credential in `X-Service-Account-Key`. Accounts use the same roles and tenant authorization boundary as other principals and support bounded expiry, rotation overlap, explicit rotation completion, disabling, and lifecycle reporting.
+
+OpenDataGraph stores only salted PBKDF2 verifiers. It never returns a clear credential after creation or rotation. See [Service accounts](SERVICE_ACCOUNTS.md).
 
 Roles, from least to most privileged:
 
@@ -45,6 +51,6 @@ SCIM provisioning uses separate bearer tokens bound to tenants in `ODG_SCIM_TOKE
 
 ## Isolation behavior
 
-Tenant filters apply to assets, agents, policy audits and bundles, delegations, exceptions, connector runs and schedules, classification reviews, AI usage events, lineage, graph edges and exports, jobs, evidence and dispositions, integrations and deliveries, SCIM resources, and deprovisioning workflows. Cross-tenant object identifiers return `404` rather than revealing that the object exists.
+Tenant filters apply to assets, agents, policy audits and bundles, delegations, exceptions, connector runs and schedules, classification reviews, AI usage events, lineage, graph edges and exports, jobs, evidence and dispositions, integrations and deliveries, SCIM resources and deprovisioning workflows, service accounts, governance reviews, and ownership campaigns. Cross-tenant object identifiers return `404` rather than revealing that the object exists.
 
 Use separate databases when policy requires physical, cryptographic, regional, or customer-managed-key isolation.

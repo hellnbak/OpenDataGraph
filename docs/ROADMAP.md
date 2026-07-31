@@ -46,3 +46,14 @@
 - Catalog ownership campaigns, attestations, and remediation tracking
 - Graph export jobs for very large estates and external analytics sinks
 - Upgrade compatibility matrix, performance benchmarks, and long-running soak tests
+
+Delivered in v1.5.0.
+
+## v1.6 — Ecosystem and scale
+
+- Additional ownership campaign scheduling and notification channels
+- External identity federation for short-lived workload credentials
+- Pluggable export sinks with equivalent allowlist and workload-identity controls
+- Expanded governance analytics and evidence packaging
+- PostgreSQL query plans and production-like benchmark profiles for larger estates
+- Connector coverage selected from validated customer metadata requirements
