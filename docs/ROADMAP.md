@@ -57,3 +57,14 @@ Delivered in v1.5.0.
 - Expanded governance analytics and evidence packaging
 - PostgreSQL query plans and production-like benchmark profiles for larger estates
 - Connector coverage selected from validated customer metadata requirements
+
+Delivered in v1.6.0 with metadata-only PostgreSQL catalog coverage as the first requirement-driven relational source.
+
+## v1.7 — Assurance and extensibility
+
+- Signed governance evidence-package manifests and external verification profiles
+- Connector conformance suites and administrator-defined connector capability policies
+- Workload identity exchange profiles for major cloud identity providers
+- Additional governed export adapters selected from deployment requirements
+- Campaign escalation policies, reminders, and ownership analytics trends
+- PostgreSQL benchmark baselines captured across documented reference topologies

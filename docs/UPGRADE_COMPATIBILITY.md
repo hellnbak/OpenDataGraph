@@ -6,22 +6,22 @@ OpenDataGraph supports forward-only Alembic upgrades. Back up and stop API and w
 
 | From | To | Database path | API compatibility | Required review |
 | --- | --- | --- | --- | --- |
-| 1.2.x | 1.5.0 | Run migrations 0002 through 0004 | Existing v1.2 APIs remain | OIDC and SCIM, schedules, retention, integrations, v1.4 governance, then v1.5 identity and export settings |
-| 1.3.x | 1.5.0 | Run migrations 0003 and 0004 | Existing v1.3 APIs remain | Cron and discovery, disposition and replay, then service accounts, governance SLAs, formats, ownership, and exports |
-| 1.4.x | 1.5.0 | Run migration 0004 | Existing v1.4 APIs remain | Service-account lifetimes, governance notifications, event formats, ownership, graph export storage and sinks |
-| 1.5.0 | 1.5.0 | No schema change | Native | Configuration and qualification only |
+| 1.2.x | 1.6.0 | Run migrations 0002 through 0005 | Existing v1.2 APIs remain | Identity, schedules, retention, integrations, v1.4 governance, v1.5 lifecycle controls, then v1.6 federation, packages, and sinks |
+| 1.3.x | 1.6.0 | Run migrations 0003 through 0005 | Existing v1.3 APIs remain | Cron, discovery, disposition, replay, v1.5 ownership and exports, then v1.6 settings |
+| 1.4.x | 1.6.0 | Run migrations 0004 and 0005 | Existing v1.4 APIs remain | Service accounts, governance notifications, ownership, exports, workload identity, packages, and PostgreSQL connector configuration |
+| 1.5.0 | 1.6.0 | Run migration 0005 | Existing v1.5 APIs remain | Workload providers, ownership schedules, HTTPS sinks, package storage, connector permissions, and qualification tooling |
+| 1.6.0 | 1.6.0 | No schema change | Native | Configuration and qualification only |
 
 SQLite is supported for local development, deterministic tests, and controlled single-worker evaluation. PostgreSQL is recommended for shared deployments, multiple workers, schedules, larger estates, and long-running qualification.
 
-## v1.5 schema changes
+## v1.6 schema changes
 
-Migration `20260730_0004` adds:
+Migration `20260731_0005` adds:
 
-- service accounts, credentials, and credential rotations;
-- governance review tasks;
-- ownership campaigns and assignments;
-- asynchronous graph export records;
-- `integration_endpoints.event_format`, defaulting existing rows to `native`.
+- ownership campaign schedules;
+- governance evidence package records;
+- source-schedule and selected-notification metadata on ownership campaigns;
+- composite tenant/status/time indexes for service-account credentials, governance reviews, ownership campaigns and assignments, and graph exports.
 
 The migration is idempotent for fresh schemas created through earlier migration behavior.
 
@@ -29,17 +29,18 @@ The migration is idempotent for fresh schemas created through earlier migration 
 
 1. Record the current application and Alembic versions.
 2. Stop API and worker processes.
-3. Verify database and evidence backups; include local graph-export storage if it must survive rollback.
-4. Apply `alembic upgrade head`.
-5. Deploy the same v1.5 image to API, migration, and worker roles.
-6. Verify `/health`, `/ready`, and the Alembic head.
-7. Test an existing API-key or OIDC flow and one existing native integration.
-8. Test service-account creation and rotation with synthetic credentials.
-9. Submit and complete a synthetic governance review.
-10. Launch and complete a bounded synthetic ownership campaign.
-11. Execute and integrity-check a small graph export.
-12. Run focused tenant-isolation checks before enabling normal workloads.
+3. Verify database, evidence, graph-export, and governance-package backups as applicable.
+4. Review workload identity providers, ownership schedule destinations, HTTPS sink allowlists and projected token paths, package storage, and PostgreSQL connector grants.
+5. Apply `alembic upgrade head`.
+6. Deploy the same v1.6 image to API, migration, and worker roles.
+7. Verify `/health`, `/ready`, and Alembic revision `20260731_0005`.
+8. Test an existing authentication flow and one short-lived workload identity with synthetic claims.
+9. Launch one scheduled synthetic ownership campaign and inspect its integration event.
+10. Generate and integrity-check a bounded governance evidence package.
+11. Execute a small export through every enabled sink type.
+12. Run a metadata-only PostgreSQL connector scan with a least-privileged synthetic catalog.
+13. Run focused tenant-isolation checks before enabling normal workloads.
 
 ## Rollback
 
-Do not run an Alembic downgrade. Stop v1.5 processes, restore the complete verified pre-upgrade state, and redeploy the matching prior application version. Objects written to an external export sink are outside database rollback and require their own governed cleanup procedure.
+Do not run an Alembic downgrade. Stop v1.6 processes, restore the complete verified pre-upgrade state, and redeploy the matching prior application version. Objects written to external export sinks and package storage are outside database rollback and require their own governed cleanup procedure.

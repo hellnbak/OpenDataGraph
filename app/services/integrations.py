@@ -213,7 +213,7 @@ def _format_delivery(
         return event_format, "application/json", body
     extension = json.dumps(payload, separators=(",", ":"), sort_keys=True)
     cef = (
-        "CEF:0|OpenDataGraph|OpenDataGraph|1.5.0|"
+        f"CEF:0|OpenDataGraph|OpenDataGraph|{settings.version}|"
         f"{_cef_escape(delivery.event_type)}|{_cef_escape(delivery.event_type)}|5|"
         f"rt={_cef_escape(timestamp)} "
         f"externalId={_cef_escape(delivery.delivery_id)} "

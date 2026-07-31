@@ -2,33 +2,35 @@
 
 OpenDataGraph is a source-available data intelligence and AI policy platform. It catalogs enterprise data, explains sensitivity and lifecycle findings, evaluates AI data-use policy, records observed AI activity, and exposes governed context through REST APIs, an operational console, and an MCP server.
 
-> Release: **v1.5.0 Commercial Readiness Preview**. Shared deployments require authentication, tenant-bound identities, TLS, external secret management, migrations, backups, network controls, and reviewed outbound integrations and export sinks.
+> Release: **v1.6.0 Ecosystem and Scale Preview**. Shared deployments require authentication, tenant-bound identities, TLS, external secret management, migrations, backups, network controls, and reviewed connector, integration, workload-identity, evidence-package, and export configuration.
 
 ## Platform capabilities
 
 - Enterprise metadata catalog with ownership, source identity, timestamps, exposure, encryption, lifecycle posture, and AI access context
-- Metadata-first connectors for AWS S3, Google Drive, GitHub, GitLab, and SharePoint / OneDrive through a normalized cursor-aware connector SDK
+- Metadata-first connectors for AWS S3, Google Drive, GitHub, GitLab, SharePoint / OneDrive, and PostgreSQL catalogs through a normalized cursor-aware connector SDK
 - Deterministic classification, optional bounded enrichment, confidence and explanations, human review, and lifecycle recommendations
 - Explainable AI data-use decisions, YAML rules, versioned policy bundles, simulation, diffs, delegated approvals, renewable exceptions, activation, rollback, and audit history
 - AI agent registry, idempotent AI usage events, policy correlation, indexed relational graph edges, OpenLineage ingestion, path explanations, bounded multi-hop queries, synchronous export, and asynchronous large-estate export jobs
-- Tenant-bound API keys, signed provider-specific OIDC validation with cached discovery, SCIM user, group, and bulk provisioning, deprovisioning workflows, service accounts with one-time credentials and controlled rotation, ordered roles, and tenant-scoped APIs
-- Durable database-backed jobs, interval or time-zone-aware cron connector schedules, maintenance windows, shared provider request budgets, governance notifications, export execution, retries, cancellation, stale-claim recovery, and reference-only secrets
+- Tenant-bound API keys, signed provider-specific OIDC validation with cached discovery, fixed-trust short-lived workload federation, SCIM user, group, and bulk provisioning, deprovisioning workflows, service accounts with one-time credentials and controlled rotation, ordered roles, and tenant-scoped APIs
+- Durable database-backed jobs, interval or time-zone-aware cron connector and ownership schedules, maintenance windows, shared provider request budgets, governance notifications, evidence-package and export execution, retries, cancellation, stale-claim recovery, and reference-only secrets
 - OpenSearch-backed metadata indexing with database fallback and tenant-scoped search
 - Bounded local or S3-compatible evidence storage with SHA-256 integrity, retention dates, object-lock verification, disposition approvals, governed deletion, and legal hold
 - Signed outbound alert, decision, governance, and export events with explicit host allowlists, native, CloudEvents, CEF, and Splunk HEC formats, delivery dashboards, dead-letter state, controlled replay, and worker retries
 - Unified policy and evidence review queue with assignment, deadlines, overdue notifications, and tenant SLA metrics
-- Catalog ownership campaigns with bounded scope, immutable assignment snapshots, owner attestations, owner correction, remediation deadlines, and completion tracking
-- Alembic migrations, SQLite and PostgreSQL backup/restore, readiness checks, Prometheus metrics, JSON logs, request IDs, and optional OTLP tracing
+- Catalog ownership campaigns with bounded scope, recurring schedules, selected notification destinations, immutable assignment snapshots, owner attestations, owner correction, remediation deadlines, and completion tracking
+- Governance analytics with SLA, aging, ownership, evidence, identity, and policy-decision posture plus integrity-checked metadata-only evidence packages
+- Pluggable graph export sinks for allowlisted S3 and HTTPS destinations, using runtime workload identity without persisted sink credentials
+- Alembic migrations, SQLite and PostgreSQL backup/restore, PostgreSQL query-plan capture, production-like benchmark profiles, readiness checks, Prometheus metrics, JSON logs, request IDs, and optional OTLP tracing
 - Operational console, REST API, MCP server, Docker Compose, HA-oriented Helm chart, and AWS backing-service templates
 
-## New in v1.5
+## New in v1.6
 
-- Tenant-scoped service accounts issue non-recoverable one-time credentials, authenticate through a dedicated header, rotate with bounded grace periods, and expose lifecycle reports without revealing hashes or salts
-- Policy approvals, exception renewals, and evidence dispositions populate a unified governance queue with assignment, SLA metrics, and allowlisted overdue notifications
-- Integration endpoints adapt bounded events to native OpenDataGraph JSON, CloudEvents 1.0, CEF, or Splunk HEC
-- Ownership campaigns select a bounded catalog scope and track confirmation, owner correction, remediation, resolution, and campaign completion
-- Asynchronous graph export jobs produce integrity-checked JSON, CSV, or GraphML in local or S3 storage and can write only to allowlisted external S3 sinks
-- Deterministic benchmark and read-only soak tools, an upgrade compatibility matrix, and expanded release qualification guidance support deployment planning
+- Recurring ownership campaign schedules use interval or time-zone-aware cron calendars, maintenance windows, bounded launch scope, idempotent worker jobs, and selected integration notification channels
+- External workload identities validate signed OIDC tokens with exact issuer and audience, fixed tenant and role trust, and a maximum one-hour lifetime without storing the token
+- The graph export sink registry supports allowlisted S3 and HTTPS destinations; HTTPS pushes read a mounted short-lived workload token only at execution time and never follow redirects
+- Governance analytics report SLA compliance, aging, ownership remediation, evidence disposition, service-account credential, and policy-decision posture; asynchronous metadata-only evidence packages add SHA-256 integrity and local or S3 storage
+- The metadata-only PostgreSQL catalog connector inventories visible tables and views with bounded opaque pagination, row estimates, ownership, and column counts without reading table content
+- PostgreSQL benchmark profiles and read-only `EXPLAIN (FORMAT JSON)` capture support larger-estate qualification without claiming certified capacity
 
 ## Local start
 
@@ -69,7 +71,7 @@ The stack runs PostgreSQL, OpenSearch, a migration task, the API, and a backgrou
 
 ## Configuration
 
-Review `.env.example` before running outside local development. Important settings include `ODG_DATABASE_URL`, `ODG_DEFAULT_TENANT`, authentication and identity settings, service-account lifetimes, `ODG_SEARCH_BACKEND`, evidence and disposition configuration, governance SLAs, `ODG_SECRET_FILE_ROOTS`, connector and integration host allowlists, graph export storage and sink allowlists, and `OTEL_EXPORTER_OTLP_ENDPOINT`.
+Review `.env.example` before running outside local development. Important settings include `ODG_DATABASE_URL`, `ODG_DEFAULT_TENANT`, human and workload identity providers, service-account lifetimes, `ODG_SEARCH_BACKEND`, evidence and governance-package storage, governance SLAs, `ODG_SECRET_FILE_ROOTS`, connector and integration host allowlists, graph export storage and sink allowlists, and `OTEL_EXPORTER_OTLP_ENDPOINT`.
 
 Keep `ODG_AUTH_DISABLED=true` only for trusted local development.
 
@@ -80,8 +82,10 @@ Keep `ODG_AUTH_DISABLED=true` only for trusted local development.
 - [Authentication and tenancy](docs/AUTHENTICATION.md)
 - [Identity provisioning](docs/IDENTITY_PROVISIONING.md)
 - [Service accounts](docs/SERVICE_ACCOUNTS.md)
+- [Workload identity](docs/WORKLOAD_IDENTITY.md)
 - [Governance operations](docs/GOVERNANCE_OPERATIONS.md)
 - [Ownership campaigns](docs/OWNERSHIP_CAMPAIGNS.md)
+- [Governance evidence packages](docs/GOVERNANCE_EVIDENCE_PACKAGES.md)
 - [Background jobs](docs/BACKGROUND_JOBS.md)
 - [Scheduling and provider budgets](docs/SCHEDULING_AND_RATE_LIMITS.md)
 - [Search](docs/SEARCH.md)
@@ -96,7 +100,9 @@ Keep `ODG_AUTH_DISABLED=true` only for trusted local development.
 - [Policy as code](docs/POLICY_AS_CODE.md)
 - [AI usage events](docs/AI_USAGE_EVENTS.md)
 - [Knowledge graph](docs/KNOWLEDGE_GRAPH.md)
+- [Export sinks](docs/EXPORT_SINKS.md)
 - [Performance qualification](docs/PERFORMANCE.md)
+- [PostgreSQL query plans](docs/QUERY_PLANS.md)
 - [Upgrade compatibility](docs/UPGRADE_COMPATIBILITY.md)
 - [MCP server](docs/MCP_SERVER.md)
 - [Deployment](docs/deployment/README.md)
@@ -117,6 +123,6 @@ docker compose build
 
 ## License
 
-OpenDataGraph v1.5.0 is source-available under the [Functional Source License, Version 1.1, ALv2 Future License](LICENSE) (`FSL-1.1-ALv2`). Internal use, non-commercial education and research, and qualifying professional services are permitted. Competing commercial products and services are not permitted.
+OpenDataGraph v1.6.0 is source-available under the [Functional Source License, Version 1.1, ALv2 Future License](LICENSE) (`FSL-1.1-ALv2`). Internal use, non-commercial education and research, and qualifying professional services are permitted. Competing commercial products and services are not permitted.
 
-The v1.5.0 release becomes available under Apache License 2.0 on July 30, 2028. Earlier releases remain available under the terms distributed with those releases. Contact the licensor for commercial terms not granted by FSL.
+The v1.6.0 release becomes available under Apache License 2.0 on July 31, 2028. Earlier releases remain available under the terms distributed with those releases. Contact the licensor for commercial terms not granted by FSL.

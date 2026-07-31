@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.6.0 - 2026-07-31
+
+### Added
+
+- Recurring tenant-scoped ownership campaign schedules with interval or cron cadence, time zones, maintenance windows, idempotent launch jobs, and selected notification endpoints
+- Short-lived external workload identity federation with asymmetric OIDC validation and fixed provider tenant and role assignments
+- Pluggable graph export sink registry with compatible allowlisted S3 delivery and allowlisted HTTPS push using mounted workload identity tokens
+- Governance analytics covering review SLAs and aging, ownership remediation, evidence disposition, service-account credential posture, and policy decisions
+- Asynchronous metadata-only governance evidence packages with bounded records, SHA-256 integrity, and local or S3-compatible storage
+- Metadata-only PostgreSQL catalog connector with opaque pagination, least-privilege discovery, row estimates, ownership, and column counts
+- PostgreSQL benchmark profiles, read-only JSON query-plan capture, and targeted larger-estate composite indexes
+- Alembic upgrade from v1.5 and deterministic tests for v1.6 ecosystem and scale controls
+
+### Changed
+
+- Updated application, console, chart, documentation, deployment defaults, and release packaging versions to `1.6.0`
+- Extended the worker scheduler and durable job registry for ownership campaign launches and governance package generation
+- Expanded Docker Compose and Helm configuration for workload federation, HTTPS export identity, and governance package storage
+- Preserved all prior catalog, connector, classification, policy, AI activity, identity, evidence, integration, graph, search, job, ownership, governance, and observability capabilities
+
 ## 1.5.0 - 2026-07-30
 
 ### Added

@@ -2,12 +2,12 @@
 
 OpenDataGraph includes deterministic benchmark and bounded read-only soak tools. No certified throughput, latency, estate-size, or concurrency numbers are bundled because results depend on database sizing, indexes, network placement, data distribution, worker capacity, OpenSearch, and object storage.
 
-## Local benchmark
+## Benchmark profiles
 
 Run:
 
 ```bash
-python -m app.benchmark --assets 10000 --edges 25000 --iterations 50
+python -m app.benchmark --profile local
 ```
 
 The command creates an isolated in-memory SQLite schema, loads synthetic assets and graph edges, then reports p50, p95, maximum latency, and operations per second for:
@@ -16,6 +16,25 @@ The command creates an isolated in-memory SQLite schema, loads synthetic assets 
 - bounded graph traversal.
 
 Inputs are bounded. The result is useful for code-change comparison on the same machine; it is not a production capacity result.
+
+Built-in profiles are:
+
+- `local`: 10,000 assets, 25,000 edges, 50 iterations in isolated in-memory SQLite;
+- `postgres-small`: 100,000 assets, 250,000 edges, 100 iterations;
+- `postgres-large`: 500,000 assets, 1,500,000 edges, 200 iterations.
+
+PostgreSQL profiles require an approved isolated database and explicit fixture-write acknowledgement:
+
+```bash
+python -m app.benchmark \
+  --profile postgres-small \
+  --database-url 'postgresql+psycopg://user:password@database.example.test/qualification' \
+  --allow-fixture-writes
+```
+
+The benchmark uses a unique synthetic tenant and deletes its graph and catalog rows after measurement. It may create missing OpenDataGraph tables, so never point it at production.
+
+Use `python -m app.query_plans` for non-executing PostgreSQL `EXPLAIN (FORMAT JSON)` capture. See [PostgreSQL query plans](QUERY_PLANS.md).
 
 ## Read-only soak
 
@@ -45,7 +64,7 @@ For a production-like qualification:
 1. Use PostgreSQL, the intended OpenSearch topology, representative graph and catalog distributions, and production-like object storage.
 2. Run migrations and warm search indexes before measurement.
 3. Exercise API and worker replicas separately and together.
-4. Measure connector schedules, governance notifications, integration delivery, evidence operations, and graph exports with synthetic metadata.
+4. Measure connector and ownership schedules, governance notifications and packages, integration delivery, evidence operations, and graph exports with synthetic metadata.
 5. Monitor database connections, query latency, worker queue depth, retries, memory, CPU, storage latency, and external rate limits.
 6. Run a read-only soak for the intended observation period and a separate approved workload test for mutation paths.
 7. Record environment, data volume, configuration, commit or release version, result, and acceptance threshold.

@@ -54,7 +54,7 @@ The `search` parameter uses OpenSearch when configured and database fallback oth
 - `POST /api/v1/jobs/{job_id}/cancel`
 - `POST /api/v1/jobs/{job_id}/retry`
 
-Synchronous dynamic connector types are `github`, `gitlab`, and `sharepoint`. Queued types also include `aws-s3` and `google-drive`.
+Synchronous dynamic connector types are `github`, `gitlab`, and `sharepoint`. Queued and scheduled types also include `aws-s3`, `google-drive`, and metadata-only `postgresql` catalog scans.
 
 ## Classification review
 
@@ -73,6 +73,7 @@ Synchronous dynamic connector types are `github`, `gitlab`, and `sharepoint`. Qu
 - `POST|GET /api/v1/graph/exports`
 - `GET /api/v1/graph/exports/{export_id}`
 - `GET /api/v1/graph/exports/{export_id}/download`
+- `GET /api/v1/graph/export-sinks`
 
 ## Evidence
 
@@ -116,6 +117,10 @@ Creation and rotation return a clear credential exactly once. Read responses nev
 - `PATCH /api/v1/governance/reviews/{task_id}/assign`
 - `GET /api/v1/governance/sla`
 - `POST /api/v1/governance/notifications/jobs`
+- `GET /api/v1/governance/analytics`
+- `POST|GET /api/v1/governance/evidence-packages`
+- `GET /api/v1/governance/evidence-packages/{package_id}`
+- `GET /api/v1/governance/evidence-packages/{package_id}/download`
 - `POST|GET /api/v1/ownership/campaigns`
 - `GET /api/v1/ownership/campaigns/{campaign_id}`
 - `POST /api/v1/ownership/campaigns/{campaign_id}/launch`
@@ -123,11 +128,13 @@ Creation and rotation return a clear credential exactly once. Read responses nev
 - `POST /api/v1/ownership/assignments/{assignment_id}/attest`
 - `PATCH /api/v1/ownership/assignments/{assignment_id}/remediation`
 - `POST /api/v1/ownership/assignments/{assignment_id}/resolve`
+- `POST|GET /api/v1/ownership/schedules`
+- `PATCH|DELETE /api/v1/ownership/schedules/{schedule_id}`
 
 ## Authentication
 
 - `GET /api/v1/auth/configuration`
 
-When authentication is enabled, send a tenant-bound key in `X-API-Key`, a service-account credential in `X-Service-Account-Key`, or a signed bearer token from a configured OIDC provider. Data-bearing APIs never accept tenant selection from the request.
+When authentication is enabled, send a tenant-bound key in `X-API-Key`, a service-account credential in `X-Service-Account-Key`, a signed human bearer token from a configured OIDC provider, or a short-lived signed token in `X-Workload-Identity-Token`. Workload providers fix the tenant and role. Data-bearing APIs never accept tenant selection from the request.
 
 SCIM provisioning uses dedicated `/scim/v2/Users`, `/scim/v2/Groups`, and `/scim/v2/Bulk` endpoints with a separate tenant-bound bearer token. It never accepts a tenant header. Auditors inspect durable user offboarding through `GET /api/v1/identity/deprovisioning`.

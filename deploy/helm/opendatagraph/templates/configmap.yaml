@@ -23,6 +23,7 @@ data:
   ODG_INTEGRATION_TIMEOUT_SECONDS: {{ .Values.config.integrationTimeoutSeconds | quote }}
   ODG_OIDC_DISCOVERY_CACHE_SECONDS: {{ .Values.config.oidcDiscoveryCacheSeconds | quote }}
   ODG_OIDC_HTTP_TIMEOUT_SECONDS: {{ .Values.config.oidcHttpTimeoutSeconds | quote }}
+  ODG_WORKLOAD_IDENTITY_MAX_TOKEN_SECONDS: {{ .Values.config.workloadIdentityMaxTokenSeconds | quote }}
   ODG_SCIM_BULK_MAX_OPERATIONS: {{ .Values.config.scimBulkMaxOperations | quote }}
   ODG_SERVICE_ACCOUNT_CREDENTIAL_DAYS: {{ .Values.config.serviceAccountCredentialDays | quote }}
   ODG_SERVICE_ACCOUNT_ROTATION_GRACE_HOURS: {{ .Values.config.serviceAccountRotationGraceHours | quote }}
@@ -39,8 +40,18 @@ data:
   ODG_GRAPH_EXPORT_ENDPOINT_URL: {{ .Values.config.graphExportEndpointUrl | quote }}
   ODG_GRAPH_EXPORT_REGION: {{ .Values.config.graphExportRegion | quote }}
   ODG_GRAPH_EXPORT_ALLOWED_SINK_BUCKETS: {{ .Values.config.graphExportAllowedSinkBuckets | quote }}
+  ODG_GRAPH_EXPORT_HTTPS_ALLOWED_HOSTS: {{ .Values.config.graphExportHttpsAllowedHosts | quote }}
+  ODG_GRAPH_EXPORT_HTTPS_TIMEOUT_SECONDS: {{ .Values.config.graphExportHttpsTimeoutSeconds | quote }}
+  {{- if .Values.workloadIdentityToken.enabled }}
+  ODG_GRAPH_EXPORT_HTTPS_IDENTITY_TOKEN_FILE: {{ printf "%s/%s" .Values.workloadIdentityToken.mountDirectory .Values.workloadIdentityToken.fileName | quote }}
+  {{- end }}
   ODG_GOVERNANCE_DEFAULT_SLA_HOURS: {{ .Values.config.governanceDefaultSlaHours | quote }}
   ODG_GOVERNANCE_DUE_SOON_HOURS: {{ .Values.config.governanceDueSoonHours | quote }}
+  ODG_GOVERNANCE_PACKAGE_BACKEND: {{ .Values.config.governancePackageBackend | quote }}
+  ODG_GOVERNANCE_PACKAGE_PREFIX: {{ .Values.config.governancePackagePrefix | quote }}
+  ODG_GOVERNANCE_PACKAGE_ENDPOINT_URL: {{ .Values.config.governancePackageEndpointUrl | quote }}
+  ODG_GOVERNANCE_PACKAGE_REGION: {{ .Values.config.governancePackageRegion | quote }}
+  ODG_GOVERNANCE_PACKAGE_MAX_BYTES: {{ .Values.config.governancePackageMaxBytes | quote }}
   ODG_LOG_FORMAT: {{ .Values.config.logFormat | quote }}
   ODG_METRICS_ENABLED: {{ .Values.config.metricsEnabled | quote }}
   ODG_WORKER_POLL_SECONDS: {{ .Values.config.workerPollSeconds | quote }}

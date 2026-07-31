@@ -1,72 +1,69 @@
-# OpenDataGraph v1.5.0
+# OpenDataGraph v1.6.0
 
-OpenDataGraph v1.5 adds the commercial-readiness control plane: automation identities, unified governance operations, catalog ownership campaigns, interoperable security events, scalable graph exports, and repeatable deployment qualification.
+OpenDataGraph v1.6 adds ecosystem and scale controls: recurring ownership campaigns, short-lived workload federation, pluggable governed export sinks, governance evidence packages, PostgreSQL catalog coverage, and larger-estate qualification tooling.
 
-All v1.1 through v1.4 capabilities remain part of the platform. The README lists cumulative platform capabilities separately from release-specific additions.
+All v1.1 through v1.5 capabilities remain part of the platform. The README lists cumulative platform capabilities separately from release-specific additions.
 
-## Service accounts
+## Ownership automation
 
-Administrators can create tenant-scoped service accounts with an existing ordered platform role. Creation returns one credential exactly once. OpenDataGraph stores a random salt and PBKDF2-HMAC-SHA256 verifier, never the clear credential.
+Data owners can schedule bounded ownership campaigns on fixed intervals or five-field cron calendars with IANA time zones and maintenance windows. Each due occurrence enqueues an idempotent `ownership.campaign.launch` job that creates one campaign snapshot with a configured due period and asset limit.
 
-Service-account callers authenticate with `X-Service-Account-Key`. Rotation issues a new one-time credential and gives the old credential a bounded grace period. Administrators can complete rotation early or disable the account, which revokes its active credentials. Lifecycle reports show never-used and stale accounts, credential expiry, and active rotation counts without exposing verifiers.
+Schedules can target selected enabled integration endpoints. Campaign launch, remediation-required, and completion events also support ordinary event subscriptions.
 
-## Governance operations
+## Workload identity federation
 
-Policy bundle submission, policy exception renewal, and evidence disposition now create tenant-scoped review tasks. Approval or rejection completes the corresponding task. Data owners can assign open work; auditors can list tasks and inspect open, overdue, due-soon, completed, and average-resolution metrics.
+External automation can authenticate with `X-Workload-Identity-Token`. Each configured provider fixes the tenant and maximum platform role; caller claims cannot elevate either boundary. Tokens require asymmetric signature, exact issuer and audience, expiry and issued-at claims, a valid subject, and a configured lifetime of no more than one hour.
 
-An administrator can enqueue a `governance.sla-notify` job. It emits `governance.review.overdue` only through subscribed allowlisted integration endpoints and records successful notification state.
+Workload tokens are validated per request and never stored. Existing API keys, human OIDC bearer tokens, and application-managed service accounts remain available.
 
-## Event interoperability
+## Export sink adapters
 
-Integration endpoints choose one event format:
+Asynchronous graph exports now dispatch through a sink registry. Existing allowlisted S3 sinks remain compatible. HTTPS sinks require an exact host allowlist, reject credentials, query parameters, fragments, and redirects, and read a mounted short-lived bearer token only when the worker pushes an export.
 
-- native OpenDataGraph JSON;
-- CloudEvents 1.0 structured JSON;
-- Common Event Format text;
-- Splunk HTTP Event Collector JSON.
+HTTPS sinks are push-only and cannot be downloaded through OpenDataGraph. Local and S3-backed export artifacts remain integrity-checkable and retrievable.
 
-All event payloads remain bounded to 256 KiB. Native, CloudEvents, and CEF deliveries use the existing optional HMAC signature. Splunk HEC uses the worker-resolved secret as its authorization token. Delivery IDs, event types, endpoint mode, and selected format remain explicit headers.
+## Governance analytics and evidence packages
 
-## Ownership campaigns
+The governance analytics API reports review aging and SLA compliance, ownership remediation posture, evidence and disposition activity, service-account credential posture, and policy decision counts.
 
-Data owners can create campaigns scoped by source, business domain, sensitivity, or current owner. Launch snapshots up to the requested bounded number of tenant assets. Assignees can confirm ownership, correct the catalog owner, or require a remediation action and future deadline. Resolving the final remediation or attestation completes the campaign.
+Auditors can enqueue metadata-only governance evidence packages for a bounded time window and record limit. Packages can include review, ownership, evidence-integrity, policy-bundle, service-account, and graph-export metadata. They exclude evidence object bytes, policy definitions, governance details, connector secrets, prompts, and responses. Packages are stored locally or in S3-compatible storage with SHA-256 integrity.
 
-Campaign assignment records preserve original and attested ownership, notes, accountable identities, remediation state, and timestamps.
+## PostgreSQL catalog connector
 
-## Scalable graph exports
+The new queued and scheduled `postgresql` connector inventories visible tables and views through `information_schema` and `pg_catalog`. It records schema, table type, estimated rows, owner, and column count with opaque bounded pagination. It does not query table rows, infer public exposure, or claim a source modification timestamp.
 
-The existing bounded synchronous graph export remains available. v1.5 adds durable `graph.export` jobs for larger estates. Jobs serialize tenant edges to JSON, CSV, or GraphML, enforce edge and byte limits, record truncation state, SHA-256, and size, and store artifacts locally or in S3-compatible storage.
+Use a secret reference containing a PostgreSQL DSN. Grant only `CONNECT`, schema `USAGE`, and visibility required for approved catalog objects; data-table `SELECT` is not required.
 
-An optional external sink must be an `s3://bucket/key` URI whose bucket is explicitly configured in `ODG_GRAPH_EXPORT_ALLOWED_SINK_BUCKETS`. Credentials and query parameters are rejected; workers use workload identity. Completed exports may emit `graph.export.completed`.
+## Scale qualification
 
-## Qualification
+`python -m app.benchmark` now includes `local`, `postgres-small`, and `postgres-large` profiles. External database profiles require PostgreSQL and an explicit fixture-write acknowledgement, use a unique synthetic tenant, and remove their fixture rows after measurement.
 
-`python -m app.benchmark` runs deterministic SQLite catalog-filter and graph-traversal measurements. `python -m app.soak` performs a bounded read-only health, readiness, and summary soak against a running environment. Neither tool claims certified capacity; use representative infrastructure and data for release qualification.
+`python -m app.query_plans` captures read-only `EXPLAIN (FORMAT JSON)` output for catalog, graph, governance, and ownership queries. It never uses `ANALYZE`. Composite tenant/status/time indexes accompany the new migration.
 
-See `docs/UPGRADE_COMPATIBILITY.md` and `docs/PERFORMANCE.md`.
+These tools provide comparative evidence, not certified capacity claims.
 
 ## Upgrade
 
 1. Stop API and worker processes.
-2. Create and verify database, evidence, and graph-export backups as applicable.
-3. Review service-account lifetimes, governance SLAs, integration formats, graph-export storage, and sink allowlists.
+2. Create and verify database, evidence, graph-export, and governance-package backups as applicable.
+3. Review workload identity providers, campaign schedules, notification destinations, export sink allowlists, mounted identity tokens, package storage, and PostgreSQL connector permissions.
 4. Run `alembic upgrade head`.
-5. Start API and workers.
-6. Verify `/ready`, service-account rotation, governance task creation, an ownership campaign, each enabled integration format, graph export and download, and tenant isolation.
+5. Start the API and workers from the same v1.6 image.
+6. Verify `/health`, `/ready`, the Alembic head, tenant isolation, one scheduled ownership launch, one short-lived workload token, one enabled export sink, one evidence package, and one bounded PostgreSQL catalog scan.
 
-Downgrades are not supported. Restore the verified pre-upgrade backup if rollback is required.
+Downgrades are not supported. Restore the verified pre-upgrade state if rollback is required.
 
 ## Compatibility and limitations
 
-- Existing API keys, OIDC providers, SCIM resources, direct scans, schedules, jobs, evidence workflows, native integrations, and synchronous graph export remain available.
-- Existing integration endpoints migrate to `event_format=native`.
-- Service-account credentials are application-managed long-lived secrets; prefer the shortest practical lifetime and external secret distribution.
-- Governance notifications require a subscribed enabled integration endpoint. Open tasks remain visible even when no notification destination exists.
-- Ownership campaigns snapshot matching assets at launch; newly discovered assets require another campaign.
-- External graph sinks support allowlisted S3 URIs only. They do not accept embedded credentials.
-- The bundled benchmark is comparative and the soak tool is read-only; neither replaces production load testing or capacity engineering.
-- PostgreSQL is recommended for shared, scheduled, multi-worker, and larger-estate deployments.
+- Existing APIs and v1.1 through v1.5 workflows remain available.
+- Ownership campaign schedules snapshot matching assets at launch; later assets require a later occurrence or campaign.
+- Scheduled campaign jobs fail safely when a scope matches no assets and follow normal bounded retry behavior.
+- Workload providers assign a fixed tenant and role. Dynamic tenant or role trust from workload claims is intentionally unsupported.
+- HTTPS export sinks require a mounted token under an approved secret-file root and do not follow redirects.
+- Governance packages contain governed metadata, not evidence object content or complete audit-source records.
+- PostgreSQL public exposure and modification timestamps are not inferred; metadata explicitly records those limits.
+- PostgreSQL benchmark profiles write synthetic fixtures and must run only against an approved isolated qualification database.
 
 ## License
 
-OpenDataGraph v1.5.0 is source-available under `FSL-1.1-ALv2`. The license permits internal use, non-commercial education and research, and qualifying professional services while prohibiting competing commercial products and services. This release becomes available under Apache License 2.0 on July 30, 2028. Earlier releases retain the terms distributed with those releases.
+OpenDataGraph v1.6.0 is source-available under `FSL-1.1-ALv2`. The license permits internal use, non-commercial education and research, and qualifying professional services while prohibiting competing commercial products and services. This release becomes available under Apache License 2.0 on July 31, 2028. Earlier releases retain the terms distributed with those releases.

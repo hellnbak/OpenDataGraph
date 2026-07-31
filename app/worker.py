@@ -6,6 +6,7 @@ from .config import settings
 from .database import SessionLocal
 from .observability import configure_logging
 from .services.jobs import claim_next_job, execute_job, recover_stale_jobs
+from .services.ownership import enqueue_due_ownership_campaigns
 from .services.schedules import enqueue_due_schedules
 
 
@@ -29,6 +30,10 @@ def run() -> None:
     while not stopping:
         with SessionLocal() as db:
             enqueue_due_schedules(db, settings.worker_schedule_batch_size)
+            enqueue_due_ownership_campaigns(
+                db,
+                settings.worker_schedule_batch_size,
+            )
             job = claim_next_job(db)
             if job:
                 logger.info("running background job", extra={"job_id": job.job_id, "job_type": job.job_type})

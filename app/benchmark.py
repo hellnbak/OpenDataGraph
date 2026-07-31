@@ -2,8 +2,9 @@ import argparse
 import json
 import statistics
 import time
+from uuid import uuid4
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, delete, select
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
@@ -11,10 +12,20 @@ from app.models import DataAsset, GraphEdge
 from app.services.graph import query_graph
 
 
+BENCHMARK_PROFILES = {
+    "local": {"assets": 10_000, "edges": 25_000, "iterations": 50},
+    "postgres-small": {"assets": 100_000, "edges": 250_000, "iterations": 100},
+    "postgres-large": {"assets": 500_000, "edges": 1_500_000, "iterations": 200},
+}
+
+
 def run_benchmark(
     asset_count: int = 10_000,
     edge_count: int = 25_000,
     iterations: int = 50,
+    database_url: str | None = None,
+    allow_fixture_writes: bool = False,
+    profile_name: str = "local",
 ) -> dict:
     if not 100 <= asset_count <= 1_000_000:
         raise ValueError("asset_count must be between 100 and 1000000")
@@ -22,42 +33,56 @@ def run_benchmark(
         raise ValueError("edge_count must be between 100 and 2000000")
     if not 5 <= iterations <= 1000:
         raise ValueError("iterations must be between 5 and 1000")
-    engine = create_engine("sqlite://")
+    if profile_name not in BENCHMARK_PROFILES:
+        raise ValueError(f"Unsupported benchmark profile: {profile_name}")
+    if database_url and not allow_fixture_writes:
+        raise ValueError("External benchmarks require allow_fixture_writes=True")
+    engine = create_engine(database_url or "sqlite://")
+    if database_url and engine.dialect.name != "postgresql":
+        raise ValueError("External benchmark profiles require PostgreSQL")
     Base.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
+    tenant_id = f"benchmark-{uuid4()}"
     with session_factory() as db:
-        _seed(db, asset_count, edge_count)
-        catalog_latencies = _measure(
-            iterations,
-            lambda index: list(
-                db.scalars(
-                    select(DataAsset)
-                    .where(
-                        DataAsset.tenant_id == "benchmark",
-                        DataAsset.source == f"source-{index % 5}",
-                        DataAsset.sensitivity == (
-                            "Restricted" if index % 7 == 0 else "Internal"
-                        ),
-                    )
-                    .limit(100)
-                ).all()
-            ),
-        )
-        graph_latencies = _measure(
-            iterations,
-            lambda index: query_graph(
-                db,
-                "benchmark",
-                "asset",
-                str(index % asset_count),
-                3,
-                "outbound",
-                set(),
-            ),
-        )
+        try:
+            _seed(db, tenant_id, asset_count, edge_count)
+            catalog_latencies = _measure(
+                iterations,
+                lambda index: list(
+                    db.scalars(
+                        select(DataAsset)
+                        .where(
+                            DataAsset.tenant_id == tenant_id,
+                            DataAsset.source == f"source-{index % 5}",
+                            DataAsset.sensitivity == (
+                                "Restricted" if index % 7 == 0 else "Internal"
+                            ),
+                        )
+                        .limit(100)
+                    ).all()
+                ),
+            )
+            graph_latencies = _measure(
+                iterations,
+                lambda index: query_graph(
+                    db,
+                    tenant_id,
+                    "asset",
+                    str(index % asset_count),
+                    3,
+                    "outbound",
+                    set(),
+                ),
+            )
+        finally:
+            if database_url:
+                db.execute(delete(GraphEdge).where(GraphEdge.tenant_id == tenant_id))
+                db.execute(delete(DataAsset).where(DataAsset.tenant_id == tenant_id))
+                db.commit()
     return {
         "profile": {
-            "database": "sqlite-memory",
+            "name": profile_name,
+            "database": "postgresql" if database_url else "sqlite-memory",
             "assets": asset_count,
             "edges": edge_count,
             "iterations": iterations,
@@ -69,14 +94,14 @@ def run_benchmark(
     }
 
 
-def _seed(db, asset_count: int, edge_count: int) -> None:
+def _seed(db, tenant_id: str, asset_count: int, edge_count: int) -> None:
     db.bulk_save_objects(
         [
             DataAsset(
-                tenant_id="benchmark",
+                tenant_id=tenant_id,
                 source=f"source-{index % 5}",
                 source_account="benchmark",
-                external_id=f"asset-{index}",
+                external_id=f"{tenant_id}-asset-{index}",
                 name=f"Synthetic asset {index}",
                 path=f"/benchmark/{index}",
                 owner=f"owner-{index % 100}",
@@ -89,7 +114,7 @@ def _seed(db, asset_count: int, edge_count: int) -> None:
     db.bulk_save_objects(
         [
             GraphEdge(
-                tenant_id="benchmark",
+                tenant_id=tenant_id,
                 source_type="asset",
                 source_id=str(index % asset_count),
                 relationship="derived_from",
@@ -124,13 +149,24 @@ def _latency_summary(latencies: list[float]) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run deterministic OpenDataGraph benchmarks")
-    parser.add_argument("--assets", type=int, default=10_000)
-    parser.add_argument("--edges", type=int, default=25_000)
-    parser.add_argument("--iterations", type=int, default=50)
+    parser.add_argument("--profile", choices=sorted(BENCHMARK_PROFILES), default="local")
+    parser.add_argument("--assets", type=int)
+    parser.add_argument("--edges", type=int)
+    parser.add_argument("--iterations", type=int)
+    parser.add_argument("--database-url")
+    parser.add_argument("--allow-fixture-writes", action="store_true")
     args = parser.parse_args()
+    profile = BENCHMARK_PROFILES[args.profile]
     print(
         json.dumps(
-            run_benchmark(args.assets, args.edges, args.iterations),
+            run_benchmark(
+                args.assets or profile["assets"],
+                args.edges or profile["edges"],
+                args.iterations or profile["iterations"],
+                args.database_url,
+                args.allow_fixture_writes,
+                args.profile,
+            ),
             indent=2,
             sort_keys=True,
         )

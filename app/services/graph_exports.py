@@ -3,7 +3,6 @@ import hashlib
 import io
 import json
 import logging
-from urllib.parse import urlparse
 from uuid import uuid4
 from xml.sax.saxutils import escape
 
@@ -12,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import GraphEdge, GraphExport, utc_now
+from app.services.export_sinks import store_export_sink, validate_export_sink
 
 
 CONTENT_TYPES = {
@@ -42,7 +42,7 @@ def create_graph_export(
         set(_bounded_string(value, "relationship", 120) for value in relationships)
     )
     if sink_uri:
-        _validate_sink_uri(sink_uri)
+        validate_export_sink(sink_uri)
     export = GraphExport(
         tenant_id=tenant_id,
         export_id=str(uuid4()),
@@ -168,6 +168,10 @@ def graph_export_response(record: GraphExport) -> dict:
         "edge_count": record.edge_count,
         "truncated": record.truncated,
         "storage_uri": record.storage_uri,
+        "retrievable": bool(
+            record.storage_uri
+            and record.storage_uri.startswith(("local://", "s3://"))
+        ),
         "sha256": record.sha256,
         "size_bytes": record.size_bytes,
         "error": record.error,
@@ -250,16 +254,12 @@ def _store_export(record: GraphExport, content: bytes, digest: str) -> str:
         if part
     )
     if record.sink_uri:
-        _validate_sink_uri(record.sink_uri)
-        bucket, key = _s3_location(record.sink_uri)
-        _s3_client().put_object(
-            Bucket=bucket,
-            Key=key,
-            Body=content,
-            ContentType=CONTENT_TYPES[record.export_format],
-            Metadata={"sha256": digest},
+        return store_export_sink(
+            record.sink_uri,
+            content,
+            CONTENT_TYPES[record.export_format],
+            digest,
         )
-        return record.sink_uri
     if settings.graph_export_backend == "local":
         root = settings.graph_export_local_directory.resolve()
         path = (root / object_key).resolve()
@@ -284,17 +284,9 @@ def _store_export(record: GraphExport, content: bytes, digest: str) -> str:
     raise RuntimeError(f"Unsupported graph export backend: {settings.graph_export_backend}")
 
 
-def _validate_sink_uri(sink_uri: str) -> None:
-    parsed = urlparse(sink_uri)
-    if parsed.scheme != "s3" or not parsed.netloc or not parsed.path.strip("/"):
-        raise ValueError("Graph export sink_uri must be an s3://bucket/key URI")
-    if parsed.username or parsed.password or parsed.query or parsed.fragment:
-        raise ValueError("Graph export sink_uri cannot contain credentials or query parameters")
-    if parsed.netloc not in settings.graph_export_allowed_sink_buckets:
-        raise ValueError("Graph export sink bucket is not allowlisted")
-
-
 def _s3_location(uri: str) -> tuple[str, str]:
+    from urllib.parse import urlparse
+
     parsed = urlparse(uri)
     if parsed.scheme != "s3" or not parsed.netloc or not parsed.path.strip("/"):
         raise ValueError("Invalid S3 graph export URI")

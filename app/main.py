@@ -36,6 +36,7 @@ from .models import (
     DecisionAudit,
     EvidenceDisposition,
     EvidenceRecord,
+    GovernanceEvidencePackage,
     GovernanceReviewTask,
     GraphEdge,
     GraphExport,
@@ -45,6 +46,7 @@ from .models import (
     LineageEvent,
     OwnershipAssignment,
     OwnershipCampaign,
+    OwnershipCampaignSchedule,
     PolicyBundle,
     ServiceAccount,
     ServiceAccountCredential,
@@ -77,6 +79,7 @@ from .schemas import (
 from .v13 import router as v13_router
 from .v14 import router as v14_router
 from .v15 import router as v15_router
+from .v16 import router as v16_router
 
 
 async def enrich_asset(asset: DataAsset, deterministic: bool = False) -> None:
@@ -135,6 +138,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifespan)
 configure_observability(app)
+app.include_router(v16_router)
 app.include_router(v15_router)
 app.include_router(v14_router)
 app.include_router(v13_router)
@@ -382,6 +386,19 @@ def summary(
         or 0,
         "graph_exports": db.scalar(
             select(func.count(GraphExport.id)).where(GraphExport.tenant_id == tenant_id)
+        )
+        or 0,
+        "ownership_schedules": db.scalar(
+            select(func.count(OwnershipCampaignSchedule.id)).where(
+                OwnershipCampaignSchedule.tenant_id == tenant_id,
+                OwnershipCampaignSchedule.enabled.is_(True),
+            )
+        )
+        or 0,
+        "governance_evidence_packages": db.scalar(
+            select(func.count(GovernanceEvidencePackage.id)).where(
+                GovernanceEvidencePackage.tenant_id == tenant_id
+            )
         )
         or 0,
         "active_policy_bundle": (

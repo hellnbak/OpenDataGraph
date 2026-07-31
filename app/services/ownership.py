@@ -1,14 +1,24 @@
 import json
+import logging
+from datetime import timedelta
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models import (
     DataAsset,
+    IntegrationEndpoint,
     OwnershipAssignment,
     OwnershipCampaign,
+    OwnershipCampaignSchedule,
     utc_now,
+)
+from app.services.schedules import (
+    next_cron_run,
+    next_schedule_run,
+    skip_maintenance,
+    validate_schedule_definition,
 )
 
 
@@ -28,6 +38,8 @@ def create_campaign(
     scope: dict,
     due_at,
     created_by: str,
+    source_schedule_id: str | None = None,
+    notification_endpoint_ids: list[str] | None = None,
 ) -> OwnershipCampaign:
     normalized_scope = _validate_scope(scope)
     due_at = due_at.replace(tzinfo=None)
@@ -39,6 +51,10 @@ def create_campaign(
         name=name,
         description=description,
         scope_json=json.dumps(normalized_scope, sort_keys=True),
+        source_schedule_id=source_schedule_id,
+        notification_endpoint_ids_json=json.dumps(
+            sorted(set(notification_endpoint_ids or []))
+        ),
         due_at=due_at,
         created_by=created_by,
     )
@@ -79,6 +95,7 @@ def launch_campaign(
     campaign.launched_at = utc_now()
     db.commit()
     db.refresh(campaign)
+    _queue_ownership_event(db, campaign, "ownership.campaign.launched")
     return campaign, len(assets)
 
 
@@ -132,6 +149,12 @@ def attest_assignment(
     assignment.attested_at = now
     db.commit()
     db.refresh(assignment)
+    if assignment.status == "remediation-required":
+        _queue_ownership_event(
+            db,
+            assignment,
+            "ownership.assignment.remediation-required",
+        )
     _complete_campaign_if_ready(db, assignment.tenant_id, assignment.campaign_id)
     return assignment
 
@@ -180,6 +203,10 @@ def campaign_response(
         "description": campaign.description,
         "status": campaign.status,
         "scope": json.loads(campaign.scope_json or "{}"),
+        "source_schedule_id": campaign.source_schedule_id,
+        "notification_endpoint_ids": json.loads(
+            campaign.notification_endpoint_ids_json or "[]"
+        ),
         "due_at": campaign.due_at,
         "counts": counts or {},
         "created_by": campaign.created_by,
@@ -246,6 +273,8 @@ def _complete_campaign_if_ready(
         campaign.status = "completed"
         campaign.completed_at = utc_now()
         db.commit()
+        db.refresh(campaign)
+        _queue_ownership_event(db, campaign, "ownership.campaign.completed")
 
 
 def _validate_scope(scope: dict) -> dict[str, list[str]]:
@@ -265,3 +294,294 @@ def _validate_scope(scope: dict) -> dict[str, list[str]]:
             raise ValueError(f"Ownership scope {field} must contain non-empty strings")
         normalized[field] = sorted(set(item.strip() for item in values))
     return normalized
+
+
+def create_campaign_schedule(
+    db: Session,
+    tenant_id: str,
+    name: str,
+    description: str,
+    scope: dict,
+    due_days: int,
+    max_assets: int,
+    schedule_type: str,
+    interval_seconds: int,
+    cron_expression: str | None,
+    timezone_name: str,
+    maintenance_windows: list[dict],
+    notification_endpoint_ids: list[str],
+    enabled: bool,
+    created_by: str,
+) -> OwnershipCampaignSchedule:
+    normalized_scope = _validate_scope(scope)
+    validate_schedule_definition(
+        schedule_type,
+        interval_seconds,
+        cron_expression,
+        timezone_name,
+        maintenance_windows,
+    )
+    if not 1 <= due_days <= 365:
+        raise ValueError("Ownership campaign due days must be 1 to 365")
+    if not 1 <= max_assets <= 100_000:
+        raise ValueError("Ownership campaign asset limit must be 1 to 100000")
+    endpoint_ids = _validate_notification_endpoints(
+        db,
+        tenant_id,
+        notification_endpoint_ids,
+    )
+    now = utc_now()
+    schedule = OwnershipCampaignSchedule(
+        tenant_id=tenant_id,
+        schedule_id=str(uuid4()),
+        name=name,
+        description=description,
+        scope_json=json.dumps(normalized_scope, sort_keys=True),
+        due_days=due_days,
+        max_assets=max_assets,
+        schedule_type=schedule_type,
+        interval_seconds=interval_seconds,
+        cron_expression=cron_expression,
+        timezone=timezone_name,
+        maintenance_windows_json=json.dumps(maintenance_windows),
+        notification_endpoint_ids_json=json.dumps(endpoint_ids),
+        enabled=enabled,
+        next_run_at=(
+            next_cron_run(
+                cron_expression or "",
+                timezone_name,
+                now,
+                maintenance_windows,
+            )
+            if schedule_type == "cron"
+            else skip_maintenance(now, timezone_name, maintenance_windows)
+        ),
+        created_by=created_by,
+    )
+    db.add(schedule)
+    db.commit()
+    db.refresh(schedule)
+    return schedule
+
+
+def enqueue_due_ownership_campaigns(db: Session, limit: int = 50) -> int:
+    from app.services.jobs import enqueue_job
+
+    now = utc_now()
+    due = list(
+        db.scalars(
+            select(OwnershipCampaignSchedule)
+            .where(
+                OwnershipCampaignSchedule.enabled.is_(True),
+                OwnershipCampaignSchedule.next_run_at <= now,
+            )
+            .order_by(OwnershipCampaignSchedule.next_run_at)
+            .limit(limit)
+        ).all()
+    )
+    enqueued = 0
+    for schedule in due:
+        scheduled_for = schedule.next_run_at.isoformat()
+        next_run = next_schedule_run(schedule, now)
+        claimed = db.execute(
+            update(OwnershipCampaignSchedule)
+            .where(
+                OwnershipCampaignSchedule.id == schedule.id,
+                OwnershipCampaignSchedule.enabled.is_(True),
+                OwnershipCampaignSchedule.next_run_at == schedule.next_run_at,
+            )
+            .values(next_run_at=next_run, last_enqueued_at=now, updated_at=now)
+        )
+        db.commit()
+        if claimed.rowcount != 1:
+            continue
+        enqueue_job(
+            db,
+            tenant_id=schedule.tenant_id,
+            job_type="ownership.campaign.launch",
+            payload={
+                "schedule_id": schedule.schedule_id,
+                "scheduled_for": scheduled_for,
+            },
+            created_by=f"ownership-schedule:{schedule.schedule_id}",
+        )
+        enqueued += 1
+    return enqueued
+
+
+def execute_scheduled_campaign(
+    db: Session,
+    tenant_id: str,
+    schedule_id: str,
+    scheduled_for: str,
+) -> dict:
+    schedule = db.scalar(
+        select(OwnershipCampaignSchedule).where(
+            OwnershipCampaignSchedule.tenant_id == tenant_id,
+            OwnershipCampaignSchedule.schedule_id == schedule_id,
+        )
+    )
+    if not schedule:
+        raise ValueError("Ownership campaign schedule not found")
+    try:
+        scheduled_at = scheduled_for.replace("+00:00", "")
+        run_stamp = scheduled_at.replace("-", "").replace(":", "")[:15]
+    except (AttributeError, ValueError) as exc:
+        raise ValueError("Ownership campaign scheduled_for is invalid") from exc
+    campaign_name = f"{schedule.name[:140]} · {run_stamp}"
+    existing = db.scalar(
+        select(OwnershipCampaign).where(
+            OwnershipCampaign.tenant_id == tenant_id,
+            OwnershipCampaign.source_schedule_id == schedule.schedule_id,
+            OwnershipCampaign.name == campaign_name,
+        )
+    )
+    if existing:
+        if existing.status == "draft":
+            existing, assignment_count = launch_campaign(
+                db,
+                existing,
+                schedule.max_assets,
+            )
+        else:
+            assignment_count = sum(
+                campaign_counts(db, tenant_id, existing.campaign_id).values()
+            )
+        return {
+            "campaign": campaign_response(
+                existing,
+                campaign_counts(db, tenant_id, existing.campaign_id),
+            ),
+            "assignment_count": assignment_count,
+            "idempotent": True,
+        }
+    campaign = create_campaign(
+        db,
+        tenant_id,
+        campaign_name,
+        schedule.description,
+        json.loads(schedule.scope_json or "{}"),
+        utc_now() + timedelta(days=schedule.due_days),
+        f"ownership-schedule:{schedule.schedule_id}",
+        source_schedule_id=schedule.schedule_id,
+        notification_endpoint_ids=json.loads(
+            schedule.notification_endpoint_ids_json or "[]"
+        ),
+    )
+    campaign, assignment_count = launch_campaign(db, campaign, schedule.max_assets)
+    return {
+        "campaign": campaign_response(
+            campaign,
+            campaign_counts(db, tenant_id, campaign.campaign_id),
+        ),
+        "assignment_count": assignment_count,
+        "idempotent": False,
+    }
+
+
+def campaign_schedule_response(schedule: OwnershipCampaignSchedule) -> dict:
+    return {
+        "schedule_id": schedule.schedule_id,
+        "name": schedule.name,
+        "description": schedule.description,
+        "scope": json.loads(schedule.scope_json or "{}"),
+        "due_days": schedule.due_days,
+        "max_assets": schedule.max_assets,
+        "schedule_type": schedule.schedule_type,
+        "interval_seconds": schedule.interval_seconds,
+        "cron_expression": schedule.cron_expression,
+        "timezone": schedule.timezone,
+        "maintenance_windows": json.loads(
+            schedule.maintenance_windows_json or "[]"
+        ),
+        "notification_endpoint_ids": json.loads(
+            schedule.notification_endpoint_ids_json or "[]"
+        ),
+        "enabled": schedule.enabled,
+        "next_run_at": schedule.next_run_at,
+        "last_enqueued_at": schedule.last_enqueued_at,
+        "created_by": schedule.created_by,
+        "created_at": schedule.created_at,
+        "updated_at": schedule.updated_at,
+    }
+
+
+def validate_campaign_schedule_endpoints(
+    db: Session,
+    tenant_id: str,
+    endpoint_ids: list[str],
+) -> list[str]:
+    return _validate_notification_endpoints(db, tenant_id, endpoint_ids)
+
+
+def validate_ownership_scope(scope: dict) -> dict[str, list[str]]:
+    return _validate_scope(scope)
+
+
+def _validate_notification_endpoints(
+    db: Session,
+    tenant_id: str,
+    endpoint_ids: list[str],
+) -> list[str]:
+    normalized = sorted(set(endpoint_ids))
+    if any(not value or len(value) > 36 for value in normalized):
+        raise ValueError("Ownership notification endpoint identifiers are invalid")
+    if not normalized:
+        return []
+    found = set(
+        db.scalars(
+            select(IntegrationEndpoint.endpoint_id).where(
+                IntegrationEndpoint.tenant_id == tenant_id,
+                IntegrationEndpoint.endpoint_id.in_(normalized),
+                IntegrationEndpoint.enabled.is_(True),
+            )
+        ).all()
+    )
+    if found != set(normalized):
+        raise ValueError(
+            "Ownership notification endpoints must exist and be enabled in the tenant"
+        )
+    return normalized
+
+
+def _queue_ownership_event(
+    db: Session,
+    subject: OwnershipCampaign | OwnershipAssignment,
+    event_type: str,
+) -> bool:
+    try:
+        from app.services.integrations import queue_integration_event
+
+        if isinstance(subject, OwnershipAssignment):
+            campaign = db.scalar(
+                select(OwnershipCampaign).where(
+                    OwnershipCampaign.tenant_id == subject.tenant_id,
+                    OwnershipCampaign.campaign_id == subject.campaign_id,
+                )
+            )
+            payload = assignment_response(subject)
+            source_id = subject.assignment_id
+        else:
+            campaign = subject
+            payload = campaign_response(subject)
+            source_id = subject.campaign_id
+        endpoint_ids = (
+            set(json.loads(campaign.notification_endpoint_ids_json or "[]"))
+            if campaign
+            else set()
+        )
+        deliveries = queue_integration_event(
+            db,
+            subject.tenant_id,
+            event_type,
+            payload,
+            created_by=f"ownership:{source_id}",
+            endpoint_ids=endpoint_ids or None,
+        )
+        return bool(deliveries)
+    except Exception:
+        db.rollback()
+        logging.getLogger(__name__).exception(
+            "failed to queue ownership notification"
+        )
+        return False

@@ -454,6 +454,12 @@ class ServiceAccountCredential(TenantMixin, Base):
     __tablename__ = "service_account_credentials"
     __table_args__ = (
         UniqueConstraint("credential_id", name="uq_service_credential_id"),
+        Index(
+            "ix_service_account_credentials_tenant_status_expires",
+            "tenant_id",
+            "status",
+            "expires_at",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -491,6 +497,12 @@ class GovernanceReviewTask(TenantMixin, Base):
     __tablename__ = "governance_review_tasks"
     __table_args__ = (
         UniqueConstraint("tenant_id", "task_id", name="uq_governance_task_tenant_id"),
+        Index(
+            "ix_governance_review_tasks_tenant_status_due",
+            "tenant_id",
+            "status",
+            "due_at",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -515,6 +527,12 @@ class OwnershipCampaign(TenantMixin, Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "campaign_id", name="uq_ownership_campaign_tenant_id"),
         UniqueConstraint("tenant_id", "name", name="uq_ownership_campaign_tenant_name"),
+        Index(
+            "ix_ownership_campaigns_tenant_status_due",
+            "tenant_id",
+            "status",
+            "due_at",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -523,11 +541,54 @@ class OwnershipCampaign(TenantMixin, Base):
     description: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
     scope_json: Mapped[str] = mapped_column(Text, default="{}")
+    source_schedule_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    notification_endpoint_ids_json: Mapped[str] = mapped_column(Text, default="[]")
     due_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     created_by: Mapped[str] = mapped_column(String(320))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
     launched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class OwnershipCampaignSchedule(TenantMixin, Base):
+    __tablename__ = "ownership_campaign_schedules"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "schedule_id",
+            name="uq_ownership_campaign_schedule_tenant_id",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "name",
+            name="uq_ownership_campaign_schedule_tenant_name",
+        ),
+        Index(
+            "ix_ownership_campaign_schedules_due",
+            "enabled",
+            "next_run_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    schedule_id: Mapped[str] = mapped_column(String(36), index=True)
+    name: Mapped[str] = mapped_column(String(160), index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    scope_json: Mapped[str] = mapped_column(Text, default="{}")
+    due_days: Mapped[int] = mapped_column(Integer, default=14)
+    max_assets: Mapped[int] = mapped_column(Integer, default=10_000)
+    schedule_type: Mapped[str] = mapped_column(String(40), default="interval", index=True)
+    interval_seconds: Mapped[int] = mapped_column(Integer, default=604_800)
+    cron_expression: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    timezone: Mapped[str] = mapped_column(String(120), default="UTC")
+    maintenance_windows_json: Mapped[str] = mapped_column(Text, default="[]")
+    notification_endpoint_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    last_enqueued_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class OwnershipAssignment(TenantMixin, Base):
@@ -539,6 +600,12 @@ class OwnershipAssignment(TenantMixin, Base):
             "campaign_id",
             "asset_id",
             name="uq_ownership_assignment_campaign_asset",
+        ),
+        Index(
+            "ix_ownership_assignments_tenant_campaign_status",
+            "tenant_id",
+            "campaign_id",
+            "status",
         ),
     )
 
@@ -563,6 +630,12 @@ class GraphExport(TenantMixin, Base):
     __tablename__ = "graph_exports"
     __table_args__ = (
         UniqueConstraint("tenant_id", "export_id", name="uq_graph_export_tenant_id"),
+        Index(
+            "ix_graph_exports_tenant_status_created",
+            "tenant_id",
+            "status",
+            "created_at",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -573,6 +646,40 @@ class GraphExport(TenantMixin, Base):
     sink_uri: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
     edge_count: Mapped[int] = mapped_column(Integer, default=0)
+    truncated: Mapped[bool] = mapped_column(Boolean, default=False)
+    storage_uri: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class GovernanceEvidencePackage(TenantMixin, Base):
+    __tablename__ = "governance_evidence_packages"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "package_id",
+            name="uq_governance_evidence_package_tenant_id",
+        ),
+        Index(
+            "ix_governance_evidence_packages_tenant_status_created",
+            "tenant_id",
+            "status",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    package_id: Mapped[str] = mapped_column(String(36), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    window_start: Mapped[datetime] = mapped_column(DateTime, index=True)
+    window_end: Mapped[datetime] = mapped_column(DateTime, index=True)
+    categories_json: Mapped[str] = mapped_column(Text, default="[]")
+    max_records: Mapped[int] = mapped_column(Integer, default=10_000)
+    record_count: Mapped[int] = mapped_column(Integer, default=0)
     truncated: Mapped[bool] = mapped_column(Boolean, default=False)
     storage_uri: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)

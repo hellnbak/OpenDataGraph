@@ -1,8 +1,8 @@
 # Backup and Restore
 
-OpenDataGraph v1.5 includes database and local-evidence backup tooling.
+OpenDataGraph v1.6 includes database and local-evidence backup tooling.
 
-Asynchronous graph export artifacts are derived outputs and are not included by `app.operations`. Back up local export storage separately only when organizational policy requires artifact recovery. S3 export buckets and external sinks require provider-native versioning, retention, and recovery controls.
+Asynchronous graph exports and governance evidence packages are derived outputs and are not included by `app.operations`. Back up local artifact storage separately only when organizational policy requires recovery. S3 artifact buckets and external sinks require provider-native versioning, retention, and recovery controls.
 
 ## Backup
 

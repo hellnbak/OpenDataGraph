@@ -36,6 +36,8 @@ Outside development mode, the requester cannot approve the same disposition. App
 
 Disposition requests also create unified governance review tasks. Approval or rejection completes the task; the disposition remains the authoritative execution state. See [Governance operations](GOVERNANCE_OPERATIONS.md).
 
+Governance evidence packages are separate metadata-only artifacts. They reference evidence integrity and lifecycle state without copying evidence bytes, filenames, or storage locations. See [Governance analytics and evidence packages](GOVERNANCE_EVIDENCE_PACKAGES.md).
+
 ## Production controls
 
 Use private versioned buckets, encryption, public-access blocking, workload identity, narrowly scoped object permissions, lifecycle policy, backup, and restore testing. Align bucket retention with OpenDataGraph retention. Application metadata cannot shorten compliance-mode Object Lock.

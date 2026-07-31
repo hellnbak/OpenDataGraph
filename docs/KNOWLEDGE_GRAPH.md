@@ -49,4 +49,4 @@ The request selects JSON, CSV, or GraphML, optional relationship filters, and a 
 
 `ODG_GRAPH_EXPORT_BACKEND` selects local or S3-compatible storage. Local API and worker processes must share `ODG_GRAPH_EXPORT_LOCAL_DIRECTORY`. S3 uses `ODG_GRAPH_EXPORT_BUCKET`, optional endpoint and region settings, and workload identity.
 
-An optional external `sink_uri` must use `s3://bucket/key`, contain no credentials or query parameters, and name a bucket in `ODG_GRAPH_EXPORT_ALLOWED_SINK_BUCKETS`. External sinks need separate retention, access, and cleanup governance.
+An optional external `sink_uri` may use an allowlisted `s3://bucket/key` or `https://host/path` destination. HTTPS sinks require a mounted short-lived workload token, reject redirects and URL parameters, and are push-only. See [Graph export sinks](EXPORT_SINKS.md).

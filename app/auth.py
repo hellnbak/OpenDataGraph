@@ -28,6 +28,7 @@ def current_principal(
     x_api_key: str | None = Header(default=None),
     authorization: str | None = Header(default=None),
     x_service_account_key: str | None = Header(default=None),
+    x_workload_identity_token: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> Principal:
     if settings.auth_disabled:
@@ -37,11 +38,18 @@ def current_principal(
     x_service_account_key = (
         x_service_account_key if isinstance(x_service_account_key, str) else None
     )
+    x_workload_identity_token = (
+        x_workload_identity_token
+        if isinstance(x_workload_identity_token, str)
+        else None
+    )
     if authorization:
         scheme, _, token = authorization.partition(" ")
         if scheme.lower() != "bearer" or not token:
             raise HTTPException(401, "Authorization must use a Bearer token")
         return _oidc_principal(token)
+    if x_workload_identity_token:
+        return _workload_identity_principal(x_workload_identity_token)
     if x_service_account_key:
         from app.services.service_accounts import authenticate_service_account
 
@@ -143,6 +151,91 @@ def _oidc_principal(token: str) -> Principal:
     return Principal(subject=subject, role=role, tenant_id=tenant_id)
 
 
+def _workload_identity_principal(token: str) -> Principal:
+    try:
+        import jwt
+
+        unverified = jwt.decode(
+            token,
+            options={
+                "verify_signature": False,
+                "verify_aud": False,
+                "verify_iss": False,
+                "verify_exp": False,
+            },
+        )
+        providers = _workload_identity_providers()
+        issuer = unverified.get("iss")
+        provider = next(
+            (item for item in providers.values() if item.get("issuer") == issuer),
+            None,
+        )
+        if not provider:
+            raise HTTPException(401, "Workload identity issuer is not configured")
+        provider = _resolved_oidc_provider(provider)
+        algorithms = provider.get("algorithms", ["RS256"])
+        if not isinstance(algorithms, list) or not algorithms or any(
+            algorithm not in {"RS256", "RS384", "RS512", "ES256", "ES384", "ES512"}
+            for algorithm in algorithms
+        ):
+            raise HTTPException(500, "Workload identity provider algorithms are invalid")
+        jwks_url = provider.get("jwks_url")
+        audience = provider.get("audience")
+        if not isinstance(jwks_url, str) or not jwks_url.startswith("https://"):
+            raise HTTPException(500, "Workload identity provider jwks_url must use HTTPS")
+        if not isinstance(audience, str) or not audience:
+            raise HTTPException(500, "Workload identity provider audience is required")
+        signing_key = jwt.PyJWKClient(jwks_url).get_signing_key_from_jwt(token)
+        claims = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=algorithms,
+            audience=audience,
+            issuer=issuer,
+            options={"require": ["exp", "iat", "iss", "sub"]},
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(401, "Workload identity token validation failed") from exc
+
+    role = provider.get("role")
+    tenant_id = provider.get("tenant_id")
+    subject = _claim_value(claims, provider.get("subject_claim", "sub"))
+    if role not in ROLES:
+        raise HTTPException(500, "Workload identity provider role is invalid")
+    if not isinstance(tenant_id, str) or not re.fullmatch(
+        r"[A-Za-z0-9_.-]{1,120}",
+        tenant_id,
+    ):
+        raise HTTPException(500, "Workload identity provider tenant is invalid")
+    if not isinstance(subject, str) or not subject.strip() or len(subject) > 320:
+        raise HTTPException(403, "Workload identity token has an invalid subject")
+    issued_at = claims.get("iat")
+    expires_at = claims.get("exp")
+    configured_max = provider.get(
+        "max_token_seconds",
+        settings.workload_identity_max_token_seconds,
+    )
+    if (
+        not isinstance(configured_max, int)
+        or not 60 <= configured_max <= 3600
+    ):
+        raise HTTPException(500, "Workload identity maximum token lifetime is invalid")
+    if (
+        not isinstance(issued_at, (int, float))
+        or not isinstance(expires_at, (int, float))
+        or expires_at <= issued_at
+        or expires_at - issued_at > configured_max
+    ):
+        raise HTTPException(401, "Workload identity token lifetime is invalid")
+    return Principal(
+        subject=f"workload:{subject.strip()}",
+        role=role,
+        tenant_id=tenant_id,
+    )
+
+
 def _claim_value(claims: dict, claim_name: object):
     if not isinstance(claim_name, str) or not claim_name:
         return None
@@ -174,6 +267,24 @@ def _oidc_providers() -> dict[str, dict]:
                 "jwks_url": settings.oidc_jwks_url,
             }
         }
+    return providers
+
+
+def _workload_identity_providers() -> dict[str, dict]:
+    try:
+        providers = json.loads(settings.workload_identity_providers_json)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            500,
+            "ODG_WORKLOAD_IDENTITY_PROVIDERS_JSON is invalid",
+        ) from exc
+    if not isinstance(providers, dict) or any(
+        not isinstance(value, dict) for value in providers.values()
+    ):
+        raise HTTPException(
+            500,
+            "ODG_WORKLOAD_IDENTITY_PROVIDERS_JSON must contain provider objects",
+        )
     return providers
 
 
@@ -252,6 +363,7 @@ def require_role(minimum_role: str):
 
 def oidc_configuration() -> dict:
     providers = _oidc_providers()
+    workload_providers = _workload_identity_providers()
     return {
         "enabled": bool(providers),
         "providers": [
@@ -266,4 +378,20 @@ def oidc_configuration() -> dict:
         "validation": "signature-issuer-audience-expiry",
         "discovery_cache_seconds": settings.oidc_discovery_cache_seconds,
         "service_accounts": True,
+        "workload_identity": {
+            "enabled": bool(workload_providers),
+            "header": "X-Workload-Identity-Token",
+            "max_token_seconds": settings.workload_identity_max_token_seconds,
+            "providers": [
+                {
+                    "name": name,
+                    "issuer": provider.get("issuer"),
+                    "audience": provider.get("audience"),
+                    "tenant_id": provider.get("tenant_id"),
+                    "role": provider.get("role"),
+                }
+                for name, provider in workload_providers.items()
+            ],
+            "validation": "signature-issuer-audience-expiry-lifetime",
+        },
     }

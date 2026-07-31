@@ -42,12 +42,14 @@ services:
       ODG_AUTO_SEED_DEMO: ${ODG_AUTO_SEED_DEMO:-true}
       ODG_DEFAULT_TENANT: ${ODG_DEFAULT_TENANT:-default}
       ODG_AUTH_DISABLED: ${ODG_AUTH_DISABLED:-true}
-      ODG_API_KEYS_JSON: ${ODG_API_KEYS_JSON:-"{}"}
-      ODG_OIDC_PROVIDERS_JSON: ${ODG_OIDC_PROVIDERS_JSON:-"{}"}
+      ODG_API_KEYS_JSON:
+      ODG_OIDC_PROVIDERS_JSON:
+      ODG_WORKLOAD_IDENTITY_PROVIDERS_JSON:
+      ODG_WORKLOAD_IDENTITY_MAX_TOKEN_SECONDS: ${ODG_WORKLOAD_IDENTITY_MAX_TOKEN_SECONDS:-3600}
       ODG_OIDC_DISCOVERY_CACHE_SECONDS: ${ODG_OIDC_DISCOVERY_CACHE_SECONDS:-3600}
       ODG_OIDC_HTTP_TIMEOUT_SECONDS: ${ODG_OIDC_HTTP_TIMEOUT_SECONDS:-5}
       ODG_SCIM_BEARER_TOKEN: ${ODG_SCIM_BEARER_TOKEN:-}
-      ODG_SCIM_TOKENS_JSON: ${ODG_SCIM_TOKENS_JSON:-"{}"}
+      ODG_SCIM_TOKENS_JSON:
       ODG_SCIM_BULK_MAX_OPERATIONS: ${ODG_SCIM_BULK_MAX_OPERATIONS:-100}
       ODG_SERVICE_ACCOUNT_CREDENTIAL_DAYS: ${ODG_SERVICE_ACCOUNT_CREDENTIAL_DAYS:-90}
       ODG_SERVICE_ACCOUNT_ROTATION_GRACE_HOURS: ${ODG_SERVICE_ACCOUNT_ROTATION_GRACE_HOURS:-24}
@@ -79,8 +81,15 @@ services:
       ODG_GRAPH_EXPORT_ENDPOINT_URL: ${ODG_GRAPH_EXPORT_ENDPOINT_URL:-}
       ODG_GRAPH_EXPORT_REGION: ${ODG_GRAPH_EXPORT_REGION:-}
       ODG_GRAPH_EXPORT_ALLOWED_SINK_BUCKETS: ${ODG_GRAPH_EXPORT_ALLOWED_SINK_BUCKETS:-}
+      ODG_GRAPH_EXPORT_HTTPS_ALLOWED_HOSTS: ${ODG_GRAPH_EXPORT_HTTPS_ALLOWED_HOSTS:-}
+      ODG_GRAPH_EXPORT_HTTPS_IDENTITY_TOKEN_FILE: ${ODG_GRAPH_EXPORT_HTTPS_IDENTITY_TOKEN_FILE:-}
+      ODG_GRAPH_EXPORT_HTTPS_TIMEOUT_SECONDS: ${ODG_GRAPH_EXPORT_HTTPS_TIMEOUT_SECONDS:-30}
       ODG_GOVERNANCE_DEFAULT_SLA_HOURS: ${ODG_GOVERNANCE_DEFAULT_SLA_HOURS:-48}
       ODG_GOVERNANCE_DUE_SOON_HOURS: ${ODG_GOVERNANCE_DUE_SOON_HOURS:-24}
+      ODG_GOVERNANCE_PACKAGE_BACKEND: local
+      ODG_GOVERNANCE_PACKAGE_LOCAL_DIRECTORY: /var/lib/opendatagraph/governance-packages
+      ODG_GOVERNANCE_PACKAGE_PREFIX: ${ODG_GOVERNANCE_PACKAGE_PREFIX:-governance-packages}
+      ODG_GOVERNANCE_PACKAGE_MAX_BYTES: ${ODG_GOVERNANCE_PACKAGE_MAX_BYTES:-104857600}
       ODG_LOG_FORMAT: json
       ODG_METRICS_ENABLED: "true"
 
@@ -102,6 +111,7 @@ services:
     volumes:
       - evidence-data:/var/lib/opendatagraph/evidence
       - graph-export-data:/var/lib/opendatagraph/exports
+      - governance-package-data:/var/lib/opendatagraph/governance-packages
       - ~/.aws:/home/opendatagraph/.aws:ro
       - ./secrets:/run/secrets:ro
     extra_hosts:
@@ -120,6 +130,7 @@ services:
     volumes:
       - evidence-data:/var/lib/opendatagraph/evidence
       - graph-export-data:/var/lib/opendatagraph/exports
+      - governance-package-data:/var/lib/opendatagraph/governance-packages
       - ~/.aws:/home/opendatagraph/.aws:ro
       - ./secrets:/run/secrets:ro
     extra_hosts:
@@ -128,5 +139,6 @@ services:
 volumes:
   evidence-data:
   graph-export-data:
+  governance-package-data:
   opensearch-data:
   postgres-data:

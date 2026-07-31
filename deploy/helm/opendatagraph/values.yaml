@@ -2,7 +2,7 @@ replicaCount: 2
 
 image:
   repository: opendatagraph
-  tag: "1.5.0"
+  tag: "1.6.0"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -60,6 +60,7 @@ config:
   integrationTimeoutSeconds: "10"
   oidcDiscoveryCacheSeconds: "3600"
   oidcHttpTimeoutSeconds: "5"
+  workloadIdentityMaxTokenSeconds: "3600"
   scimBulkMaxOperations: "100"
   serviceAccountCredentialDays: "90"
   serviceAccountRotationGraceHours: "24"
@@ -76,8 +77,15 @@ config:
   graphExportEndpointUrl: ""
   graphExportRegion: ""
   graphExportAllowedSinkBuckets: ""
+  graphExportHttpsAllowedHosts: ""
+  graphExportHttpsTimeoutSeconds: "30"
   governanceDefaultSlaHours: "48"
   governanceDueSoonHours: "24"
+  governancePackageBackend: s3
+  governancePackagePrefix: governance-packages
+  governancePackageEndpointUrl: ""
+  governancePackageRegion: ""
+  governancePackageMaxBytes: "104857600"
   logFormat: json
   metricsEnabled: "true"
   workerPollSeconds: "2"
@@ -92,6 +100,13 @@ worker:
     limits:
       cpu: "1"
       memory: 1Gi
+
+workloadIdentityToken:
+  enabled: false
+  audience: opendatagraph-export
+  expirationSeconds: 3600
+  mountDirectory: /run/secrets/opendatagraph/workload
+  fileName: token
 
 resources:
   requests:

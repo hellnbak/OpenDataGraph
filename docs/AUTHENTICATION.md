@@ -1,6 +1,6 @@
 # Authentication and Tenancy
 
-OpenDataGraph v1.5 binds each API-key, service account, or validated OIDC principal to a role and tenant.
+OpenDataGraph v1.6 binds each API-key, service account, validated human OIDC principal, or short-lived workload identity to a role and tenant.
 
 ## Local mode
 
@@ -45,12 +45,18 @@ Every principal is bound to one tenant. Data-bearing APIs do not accept a caller
 
 Discovery uses the configured issuer host and requires an exact issuer match. Explicitly list any different discovered JWKS host in the provider's `jwks_allowed_hosts`. Keep the identity provider, ingress, and application validation aligned. Do not allow unsigned tokens, symmetric algorithms, caller-selected tenants, or unrestricted discovery or JWKS locations.
 
+## Workload identity
+
+`ODG_WORKLOAD_IDENTITY_PROVIDERS_JSON` configures external automation issuers separately from human OIDC. Each provider fixes one tenant and role. Tokens arrive in `X-Workload-Identity-Token`, require the same asymmetric signature, issuer, audience, expiry, and subject validation, and may live for no more than one hour.
+
+Workload tokens are never stored. OpenDataGraph does not exchange or refresh them. See [Workload identity federation](WORKLOAD_IDENTITY.md).
+
 ## SCIM
 
 SCIM provisioning uses separate bearer tokens bound to tenants in `ODG_SCIM_TOKENS_JSON`. It never accepts caller-selected tenant context or reuses end-user OIDC tokens or API keys. Bulk provisioning and durable deprovisioning use the same credential boundary. See [Identity provisioning](IDENTITY_PROVISIONING.md).
 
 ## Isolation behavior
 
-Tenant filters apply to assets, agents, policy audits and bundles, delegations, exceptions, connector runs and schedules, classification reviews, AI usage events, lineage, graph edges and exports, jobs, evidence and dispositions, integrations and deliveries, SCIM resources and deprovisioning workflows, service accounts, governance reviews, and ownership campaigns. Cross-tenant object identifiers return `404` rather than revealing that the object exists.
+Tenant filters apply to assets, agents, policy audits and bundles, delegations, exceptions, connector runs and schedules, classification reviews, AI usage events, lineage, graph edges and exports, jobs, evidence and dispositions, integrations and deliveries, SCIM resources and deprovisioning workflows, service accounts, governance reviews and packages, and ownership campaigns and schedules. Cross-tenant object identifiers return `404` rather than revealing that the object exists.
 
 Use separate databases when policy requires physical, cryptographic, regional, or customer-managed-key isolation.

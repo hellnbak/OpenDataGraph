@@ -15,6 +15,12 @@ Each scope value may be one string or a list of strings. Unknown fields, empty v
 
 Launching a campaign selects matching assets in stable identifier order and creates at most the requested `max_assets` assignments. The assignment snapshots the current owner. Assets discovered after launch are not added automatically.
 
+## Recurring schedules
+
+Data owners can create interval or five-field cron schedules with an IANA time zone, maintenance windows, due days, asset limit, scope, and optional enabled integration endpoint identifiers. Workers atomically claim each occurrence and enqueue a reference-only `ownership.campaign.launch` job.
+
+The scheduled occurrence timestamp produces a stable campaign identity, so a retried job does not create a duplicate campaign. A scope that matches no assets fails safely and follows normal job retry behavior.
+
 ## Attestation
 
 An assignment can be confirmed with the current owner or a corrected owner. Confirmation updates the catalog owner and records the attesting identity, note, owner, and timestamp.
@@ -35,6 +41,8 @@ The assignment moves to `remediation-required`. Data owners can update its actio
 - `POST /api/v1/ownership/assignments/{assignment_id}/attest`
 - `PATCH /api/v1/ownership/assignments/{assignment_id}/remediation`
 - `POST /api/v1/ownership/assignments/{assignment_id}/resolve`
+- `POST|GET /api/v1/ownership/schedules`
+- `PATCH|DELETE /api/v1/ownership/schedules/{schedule_id}`
 
 Auditors can read campaigns and assignments. Data owners create, launch, attest, remediate, and resolve.
 
@@ -44,4 +52,5 @@ Auditors can read campaigns and assignments. Data owners create, launch, attest,
 - Review `unknown` owners before broad sensitivity campaigns.
 - Do not treat campaign completion as proof of external-system entitlement review.
 - Re-run campaigns after material catalog growth or organizational changes.
+- Subscribe integrations to `ownership.campaign.launched`, `ownership.assignment.remediation-required`, and `ownership.campaign.completed`, or select explicit enabled destinations on a schedule.
 - Preserve assignment records as governance evidence according to organizational retention requirements.
