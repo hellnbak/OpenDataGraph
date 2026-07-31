@@ -1,63 +1,58 @@
-# OpenDataGraph v1.1.0
+# OpenDataGraph v1.2.0
 
-OpenDataGraph v1.1 moves the project from a demonstration foundation toward design-partner testing with real enterprise metadata and observed AI activity.
+OpenDataGraph v1.2 turns the design-partner foundation into an enterprise-deployment preview. Catalog, policy, connector, AI-usage, graph, job, and evidence paths now share tenant context, durable operational state, migrations, and production-oriented telemetry.
 
-## Added
+## Durable work
 
-### Connector SDK
+Connector scans can be submitted to a database-backed queue and executed by one or more workers. Jobs support bounded payloads, retries with backoff, cancellation requests, stale-claim recovery, safe errors, and result records.
 
-The reusable SDK normalizes asset records and represents scan batches with completion state and an incremental cursor. Connector runs record source, account, status, imported and updated counts, cursor progression, timestamps, and safe error details.
+Queued connectors never store provider credentials. A job stores only an `env:` or `file:` reference, and the worker resolves the credential at execution time from approved secret roots. Provider endpoints require HTTPS and provider-specific host allowlists before worker-held secrets are used. AWS S3 uses the ambient boto3 credential chain.
 
-Included connectors:
+## Search and evidence
 
-- AWS S3
-- Google Drive
-- GitHub, including configurable API URLs
-- GitLab, including self-managed API URLs
-- SharePoint / OneDrive through Microsoft Graph drive delta
+OpenSearch can index catalog metadata and serve tenant-scoped text search. PostgreSQL or SQLite remains authoritative. Indexing failures fall back to database search unless OpenSearch is required. Search documents exclude sampled content, prompts, responses, credentials, and authorization headers.
 
-### Classification workflow
+Authorized data owners can attach bounded evidence objects to internal subjects. Object bytes are stored locally or in S3-compatible storage; the database stores metadata, location, size, content type, SHA-256 digest, creator, tenant, and timestamps.
 
-The pipeline combines filename, path, MIME type, deterministic secret indicators, PII indicators, financial-data indicators, optional sampled content, and optional local-model output. Every result includes sensitivity, labels, business domain, an explanation, and confidence. Low-confidence results enter a review queue where an analyst can approve, reject, or correct them.
+## Tenant isolation
 
-### Policy as code
+API-key identities are bound to a tenant. Every data-bearing API filters by that tenant, including object lookups and idempotency checks. Local authentication-disabled mode uses `ODG_DEFAULT_TENANT`.
 
-YAML policies under `policies/` cover restricted data sent to public AI, unapproved agents, and training or fine-tuning requests. The API supports policy simulation without recording an enforcement audit.
+Provider-specific OIDC validation and SCIM remain future work. Shared deployments must use an approved identity-aware gateway if API keys are not sufficient.
 
-### Authentication and roles
+## Operations
 
-API-key authentication supports read-only, auditor, analyst, connector operator, data owner, and administrator roles. Development authentication remains disabled by default. OIDC issuer and audience settings define the integration boundary for provider-specific validation planned for a later release.
-
-### AI usage events
-
-AI gateways, agents, MCP clients, and internal applications can submit stable event IDs, identity, asset, model, destination, purpose, action, timestamp, and metadata. Events are idempotent, correlated with policy, and recorded with decision and risk context.
-
-### Knowledge graph
-
-Relational edges represent relationships such as:
-
-```text
-asset -> owned_by -> identity
-asset -> belongs_to -> business-domain
-agent -> accessed -> asset
-repository -> contains -> asset
-```
-
-This keeps the preview simple while exposing graph-oriented data through the API.
-
-### Operational experience
-
-The console now surfaces connector activity, classification review volume, AI usage events, and graph-edge volume alongside catalog, lifecycle, sensitivity, agent, and policy views. The MCP server adds AI usage and relationship tools.
+- Alembic migrations for fresh and v1.1 databases
+- `/health`, `/ready`, and Prometheus `/metrics`
+- Structured JSON request logs with request IDs and no body or credential logging
+- Optional OTLP HTTP trace export
+- SQLite online backup and PostgreSQL `pg_dump` / `pg_restore` integration
+- Docker Compose API and worker services
+- Helm HA deployment templates
+- AWS managed PostgreSQL, OpenSearch, S3, and runtime IAM templates
 
 ## Compatibility and limitations
 
-- PostgreSQL or SQLite remains the system of record.
-- OpenSearch is available in the development stack but is not the authoritative query backend.
-- Connectors are metadata-first and only use sampled content when explicitly supplied.
-- API-key authentication is a foundation, not a complete enterprise identity platform.
-- OIDC configuration is an integration boundary; provider-specific JWT verification is not included.
-- Schema migrations are not yet managed by Alembic.
+- Existing synchronous connector endpoints remain available.
+- PostgreSQL is recommended for shared and multi-worker deployments; SQLite remains intended for local development and tests.
+- The migration assigns existing v1.1 records to `ODG_DEFAULT_TENANT`; review that value before upgrading.
+- The queue does not yet provide managed schedules or provider-wide rate-limit budgets.
+- OIDC settings remain an integration boundary rather than application JWT validation.
+- Evidence deletion and legal hold workflows remain future work.
+- OpenSearch is a derived index and never the system of record.
 
-## Validation
+## Upgrade
 
-The release includes nine automated tests plus lint, Python compilation, dependency audit, secret scan, container build, and SBOM jobs in CI.
+1. Stop API and worker processes.
+2. Create and verify a backup.
+3. Set `ODG_DATABASE_URL` and `ODG_DEFAULT_TENANT`.
+4. Run `alembic upgrade head`.
+5. Start the API and worker.
+6. Submit `POST /api/v1/search/reindex`.
+7. Verify `/ready`, worker completion, tenant isolation, and evidence access.
+
+Downgrades are not supported. Restore the verified pre-upgrade backup if rollback is required.
+
+## License
+
+OpenDataGraph v1.2.0 is source-available under `FSL-1.1-ALv2`. The license permits internal use, non-commercial education and research, and qualifying professional services while prohibiting competing commercial products and services. This release becomes available under Apache License 2.0 on July 30, 2028. Earlier releases retain the terms distributed with those releases.

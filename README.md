@@ -1,30 +1,36 @@
 # OpenDataGraph
 
-OpenDataGraph is an open-source data intelligence and AI policy platform. It catalogs enterprise data, explains sensitivity and lifecycle findings, evaluates AI data-use policy, records observed AI activity, and exposes the resulting context to applications and MCP clients.
+OpenDataGraph is a source-available data intelligence and AI policy platform. It catalogs enterprise data, explains sensitivity and lifecycle findings, evaluates AI data-use policy, records observed AI activity, and exposes governed context through REST APIs, an operational console, and an MCP server.
 
-> Release: **v1.1.0 Community Preview**. Use synthetic or non-sensitive data until authentication, network, and secret-management controls are configured for your environment.
+> Release: **v1.2.0 Community Preview**. Shared deployments require authentication, tenant-bound identities, TLS, external secret management, migrations, backups, and network controls.
 
-## v1.1 capabilities
+## v1.2 capabilities
 
-- Connector SDK with normalized records, incremental cursors, run history, completion state, and error visibility
-- Metadata-first connectors for AWS S3, Google Drive, GitHub, GitLab, and SharePoint / OneDrive
-- Deterministic classification with optional sampled-content and local-model enrichment
-- Confidence scores, explanations, and a human classification review queue
-- YAML policy bundles with simulation and explainable allow, conditional, or deny outcomes
-- API-key roles and an OIDC integration boundary
-- Idempotent AI usage event ingestion with policy correlation
-- Relational knowledge-graph edges connecting assets, owners, domains, repositories, and AI agents
-- Operational console, REST API, MCP server, PostgreSQL support, SQLite development mode, and Docker Compose
+- Durable database-backed jobs with workers, retry backoff, cancellation, stale-claim recovery, and reference-only connector secrets
+- OpenSearch-backed metadata indexing with database fallback and tenant-scoped queries
+- Bounded evidence objects stored locally or in an S3-compatible service, with SHA-256 integrity metadata
+- Tenant-bound API keys and tenant filters across catalog, policy, connector, review, usage, graph, job, and evidence APIs
+- Alembic database migrations for SQLite and PostgreSQL deployments
+- Prometheus metrics, structured JSON logs, request correlation IDs, optional OTLP tracing, readiness checks, backup, and restore
+- Docker Compose application and worker services, a Helm chart with HA defaults, and AWS PostgreSQL, OpenSearch, and evidence-storage templates
+- Metadata-first connectors, explainable classification, review workflows, YAML policy bundles, AI usage events, and relational graph edges
 
-## Quick start
+## Local start
 
-Python 3.12 is recommended.
+Use Python 3.12.
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+alembic upgrade head
 uvicorn app.main:app --reload --port 8080
+```
+
+Run the background worker separately:
+
+```bash
+python -m app.worker
 ```
 
 Open:
@@ -32,47 +38,39 @@ Open:
 - Dashboard: `http://localhost:8080`
 - API documentation: `http://localhost:8080/docs`
 - Health: `http://localhost:8080/health`
+- Readiness: `http://localhost:8080/ready`
+- Metrics: `http://localhost:8080/metrics`
 
-The default configuration uses SQLite, synthetic demo records, and disabled authentication for local evaluation.
+The default local configuration uses SQLite, the `default` tenant, synthetic demo records, database search, local evidence storage, and disabled authentication.
 
 ## Containers
 
 ```bash
+export ODG_POSTGRES_PASSWORD='replace-with-a-secret'
 docker compose up --build
 ```
 
-This starts PostgreSQL, OpenSearch, and OpenDataGraph. PostgreSQL is the system of record; OpenSearch is included as an integration service for future indexed search.
+The stack runs PostgreSQL, OpenSearch, a migration task, the API, and a background worker. OpenSearch indexes metadata only; PostgreSQL remains authoritative.
 
 ## Configuration
 
-Copy `.env.example` to `.env` and review every value.
-
-Important settings:
-
-- `ODG_DATABASE_URL`
-- `ODG_CLASSIFICATION_MODE`
-- `ODG_CLASSIFICATION_REVIEW_THRESHOLD`
-- `ODG_AUTH_DISABLED`
-- `ODG_API_KEYS_JSON`
-- `ODG_OIDC_ISSUER`
-- `ODG_OIDC_AUDIENCE`
-- `ODG_POLICY_DIRECTORY`
+Review `.env.example` before running outside local development. Important settings include `ODG_DATABASE_URL`, `ODG_DEFAULT_TENANT`, `ODG_AUTH_DISABLED`, `ODG_API_KEYS_JSON`, `ODG_SEARCH_BACKEND`, `ODG_OPENSEARCH_URL`, `ODG_EVIDENCE_BACKEND`, `ODG_EVIDENCE_BUCKET`, `ODG_SECRET_FILE_ROOTS`, provider-specific connector host allowlists, and `OTEL_EXPORTER_OTLP_ENDPOINT`.
 
 Keep `ODG_AUTH_DISABLED=true` only for trusted local development.
-
-## Connector safety
-
-Connectors are metadata-first. Use short-lived, least-privilege credentials and provider scopes that allow only the sources being cataloged. Connector tokens are accepted for a scan and are not stored in connector-run records.
-
-See [Connector overview](docs/CONNECTORS.md) and [Connector SDK](docs/CONNECTOR_SDK.md).
 
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [API guide](docs/api/README.md)
+- [Authentication and tenancy](docs/AUTHENTICATION.md)
+- [Background jobs](docs/BACKGROUND_JOBS.md)
+- [Search](docs/SEARCH.md)
+- [Evidence storage](docs/EVIDENCE_STORAGE.md)
+- [Observability](docs/OBSERVABILITY.md)
+- [Backup and restore](docs/BACKUP_RESTORE.md)
+- [Connectors](docs/CONNECTORS.md)
 - [Classification](docs/CLASSIFICATION.md)
 - [Policy as code](docs/POLICY_AS_CODE.md)
-- [Authentication and roles](docs/AUTHENTICATION.md)
 - [AI usage events](docs/AI_USAGE_EVENTS.md)
 - [Knowledge graph](docs/KNOWLEDGE_GRAPH.md)
 - [MCP server](docs/MCP_SERVER.md)
@@ -87,9 +85,13 @@ See [Connector overview](docs/CONNECTORS.md) and [Connector SDK](docs/CONNECTOR_
 ```bash
 pytest -q
 ruff check .
-python -m compileall -q app connectors mcp_server.py
+python -m compileall -q app connectors migrations mcp_server.py
+docker compose config
+docker compose build
 ```
 
 ## License
 
-See [LICENSE](LICENSE).
+OpenDataGraph v1.2.0 is source-available under the [Functional Source License, Version 1.1, ALv2 Future License](LICENSE) (`FSL-1.1-ALv2`). Internal use, non-commercial education and research, and qualifying professional services are permitted. Competing commercial products and services are not permitted.
+
+The v1.2.0 release becomes available under Apache License 2.0 on July 30, 2028. Earlier releases remain available under the terms distributed with those releases. Contact the licensor for commercial terms not granted by FSL.

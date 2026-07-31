@@ -11,19 +11,20 @@
 
 ## v1.2 — Enterprise deployment
 
-- Background workers and durable queue
-- OpenSearch-backed indexing and search
-- S3-compatible evidence storage
+- Durable background workers and database-backed queue
+- OpenSearch-backed metadata indexing and search
+- Local and S3-compatible evidence storage
 - Tenant context and stronger authorization isolation
-- Database migrations and upgrade tooling
-- Metrics, tracing, structured logs, backup, and restore
-- Kubernetes, Helm, high availability, and AWS infrastructure templates
+- Alembic migrations and upgrade tooling
+- Metrics, optional tracing, structured logs, backup, and restore
+- Docker Compose API and worker topology
+- Kubernetes Helm chart, HA defaults, and AWS backing-service templates
 
-## v2 — Enterprise operations
+## v1.3 — Operational hardening
 
-- Provider-specific OIDC and SCIM
-- Managed connector scheduling and rate-limit coordination
-- Legal hold, exceptions, and owner workflows
+- Managed connector schedules and provider-wide rate-limit budgets
+- Evidence retention, deletion, and legal hold
+- Provider-specific OIDC validation and SCIM provisioning
+- Policy lifecycle, approvals, exceptions, and rollback
 - Alert destinations and enforcement integrations
-- Advanced lineage and graph queries
-- Policy lifecycle, approvals, and change auditing
+- OpenLineage ingestion and advanced graph queries

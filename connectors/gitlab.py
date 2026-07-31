@@ -1,15 +1,23 @@
 from datetime import datetime
+from collections.abc import Iterable
 
+from .security import validate_https_url
 from .sdk import AssetRecord, ScanBatch
 
 
 class GitLabConnector:
     source = "gitlab"
 
-    def __init__(self, group: str, token: str, api_url: str = "https://gitlab.com/api/v4"):
+    def __init__(
+        self,
+        group: str,
+        token: str,
+        api_url: str = "https://gitlab.com/api/v4",
+        allowed_hosts: Iterable[str] | None = None,
+    ):
         self.account = group
         self.token = token
-        self.api_url = api_url.rstrip("/")
+        self.api_url = validate_https_url(api_url, allowed_hosts)
 
     def scan(self, cursor: str | None = None, max_items: int = 500) -> ScanBatch:
         import httpx

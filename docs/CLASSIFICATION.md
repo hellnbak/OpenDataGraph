@@ -1,13 +1,6 @@
 # Classification
 
-The v1.1 pipeline produces:
-
-- sensitivity: Public, Internal, Confidential, or Restricted
-- labels such as Secrets, PII, Financial, Health, Source Code, or Legal
-- business domain
-- explanation
-- confidence
-- review requirement
+The v1.2 pipeline produces sensitivity, labels, business domain, explanation, confidence, and review requirements.
 
 ## Inputs
 
@@ -17,14 +10,8 @@ When `ODG_CLASSIFICATION_MODE` is `ollama` or `hybrid`, a local model may enrich
 
 ## Review queue
 
-Results below `ODG_CLASSIFICATION_REVIEW_THRESHOLD` enter the classification review queue. An analyst can:
-
-- approve the original result
-- reject the result
-- correct sensitivity and labels
-
-A correction records the reviewer and resolution time and updates the catalog asset with full confidence.
+Results below `ODG_CLASSIFICATION_REVIEW_THRESHOLD` enter a tenant-scoped review queue. An analyst can approve, reject, or correct sensitivity and labels. Corrections record reviewer and resolution time, update the catalog, and refresh the derived search document.
 
 ## Privacy
 
-Sampled content is optional and should remain disabled unless the organization has approved source scope, byte limits, processing location, retention, and access controls.
+Sampled content is optional and should remain disabled unless source scope, byte limits, processing location, retention, and access controls are approved. Samples are not persisted in assets, connector runs, jobs, search documents, logs, traces, or graph edges.

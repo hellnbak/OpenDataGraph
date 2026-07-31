@@ -20,7 +20,7 @@ services:
       plugins.security.disabled: "true"
       OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
     ports:
-      - "9200:9200"
+      - "127.0.0.1:9200:9200"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
@@ -29,28 +29,75 @@ services:
     volumes:
       - opensearch-data:/usr/share/opensearch/data
 
-  opendatagraph:
+  migrate:
     build: .
+    command: ["alembic", "upgrade", "head"]
     depends_on:
       postgres:
         condition: service_healthy
+    environment: &application-environment
+      ODG_ENVIRONMENT: compose
+      ODG_DATABASE_URL: postgresql+psycopg://opendatagraph:${ODG_POSTGRES_PASSWORD}@postgres:5432/opendatagraph
+      ODG_AUTO_CREATE_SCHEMA: "false"
+      ODG_AUTO_SEED_DEMO: ${ODG_AUTO_SEED_DEMO:-true}
+      ODG_DEFAULT_TENANT: ${ODG_DEFAULT_TENANT:-default}
+      ODG_AUTH_DISABLED: ${ODG_AUTH_DISABLED:-true}
+      ODG_API_KEYS_JSON: ${ODG_API_KEYS_JSON:-"{}"}
+      ODG_CLASSIFICATION_MODE: ${ODG_CLASSIFICATION_MODE:-hybrid}
+      ODG_OLLAMA_URL: ${ODG_OLLAMA_URL:-http://host.docker.internal:11434}
+      ODG_OLLAMA_MODEL: ${ODG_OLLAMA_MODEL:-qwen2.5:3b}
+      ODG_SEARCH_BACKEND: opensearch
+      ODG_OPENSEARCH_URL: http://opensearch:9200
+      ODG_OPENSEARCH_REQUIRED: "false"
+      ODG_EVIDENCE_BACKEND: local
+      ODG_EVIDENCE_LOCAL_DIRECTORY: /var/lib/opendatagraph/evidence
+      ODG_SECRET_FILE_ROOTS: /run/secrets
+      ODG_GITHUB_ALLOWED_HOSTS: ${ODG_GITHUB_ALLOWED_HOSTS:-api.github.com}
+      ODG_GITLAB_ALLOWED_HOSTS: ${ODG_GITLAB_ALLOWED_HOSTS:-gitlab.com}
+      ODG_SHAREPOINT_ALLOWED_HOSTS: ${ODG_SHAREPOINT_ALLOWED_HOSTS:-graph.microsoft.com}
+      ODG_LOG_FORMAT: json
+      ODG_METRICS_ENABLED: "true"
+
+  opendatagraph:
+    build: .
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
       opensearch:
         condition: service_healthy
     ports:
       - "8080:8080"
-    environment:
-      ODG_DATABASE_URL: postgresql+psycopg://opendatagraph:${ODG_POSTGRES_PASSWORD}@postgres:5432/opendatagraph
-      ODG_AUTO_SEED_DEMO: "true"
-      ODG_CLASSIFICATION_MODE: hybrid
-      ODG_OLLAMA_URL: http://host.docker.internal:11434
-      ODG_OLLAMA_MODEL: qwen2.5:3b
-      ODG_OPENSEARCH_URL: http://opensearch:9200
+    environment: *application-environment
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
     volumes:
-      - ~/.aws:/root/.aws:ro
+      - evidence-data:/var/lib/opendatagraph/evidence
+      - ~/.aws:/home/opendatagraph/.aws:ro
+      - ./secrets:/run/secrets:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  worker:
+    build: .
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      opensearch:
+        condition: service_healthy
+    environment: *application-environment
+    restart: unless-stopped
+    volumes:
+      - evidence-data:/var/lib/opendatagraph/evidence
+      - ~/.aws:/home/opendatagraph/.aws:ro
       - ./secrets:/run/secrets:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
 volumes:
-  postgres-data:
+  evidence-data:
   opensearch-data:
+  postgres-data:

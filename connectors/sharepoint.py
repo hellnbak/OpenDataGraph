@@ -1,22 +1,34 @@
 from datetime import datetime
+from collections.abc import Iterable
 from urllib.parse import quote
 
+from .security import validate_https_url
 from .sdk import AssetRecord, ScanBatch
 
 
 class SharePointConnector:
     source = "sharepoint"
 
-    def __init__(self, site_id: str, drive_id: str, token: str):
+    def __init__(
+        self,
+        site_id: str,
+        drive_id: str,
+        token: str,
+        allowed_hosts: Iterable[str] = ("graph.microsoft.com",),
+    ):
         self.account = site_id
         self.site_id = site_id
         self.drive_id = drive_id
         self.token = token
+        self.allowed_hosts = tuple(allowed_hosts)
 
     def scan(self, cursor: str | None = None, max_items: int = 500) -> ScanBatch:
         import httpx
 
-        url = cursor or f"https://graph.microsoft.com/v1.0/drives/{quote(self.drive_id)}/root/delta"
+        url = validate_https_url(
+            cursor or f"https://graph.microsoft.com/v1.0/drives/{quote(self.drive_id)}/root/delta",
+            self.allowed_hosts,
+        )
         response = httpx.get(url, headers={"Authorization": f"Bearer {self.token}"}, timeout=30)
         response.raise_for_status()
         payload = response.json()
@@ -40,6 +52,7 @@ class SharePointConnector:
                     "drive_id": self.drive_id,
                     "parent_path": item.get("parentReference", {}).get("path"),
                     "etag": item.get("eTag"),
+                    "public_access_evidence": "not-evaluated",
                 },
             )
             for item in items

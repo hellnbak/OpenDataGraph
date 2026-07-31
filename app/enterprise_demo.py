@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import random
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 
 @dataclass(frozen=True)
@@ -101,7 +101,7 @@ def generate_enterprise_assets(profile_key: str, samples: int = 240, seed: int =
     profile = PROFILES[profile_key]
     samples = max(80, min(samples, 600))
     rng = random.Random(f"{profile_key}:{seed}:{samples}")
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
     source_names, source_accounts, source_weights = zip(*profile.sources)
     base_weight, remainder = divmod(profile.represented_assets, samples)
     records = []
