@@ -152,8 +152,12 @@ resource "aws_opensearch_domain" "this" {
 
 data "aws_iam_policy_document" "runtime" {
   statement {
-    actions   = ["s3:GetObject", "s3:PutObject"]
-    resources = ["${aws_s3_bucket.evidence.arn}/evidence/*"]
+    actions = ["s3:GetObject", "s3:PutObject"]
+    resources = [
+      "${aws_s3_bucket.evidence.arn}/evidence/*",
+      "${aws_s3_bucket.evidence.arn}/graph-exports/*",
+      "${aws_s3_bucket.evidence.arn}/governance-packages/*",
+    ]
   }
   statement {
     actions   = ["s3:ListBucket"]
@@ -161,7 +165,7 @@ data "aws_iam_policy_document" "runtime" {
     condition {
       test     = "StringLike"
       variable = "s3:prefix"
-      values   = ["evidence/*"]
+      values   = ["evidence/*", "graph-exports/*", "governance-packages/*"]
     }
   }
   statement {

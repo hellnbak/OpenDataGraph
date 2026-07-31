@@ -170,6 +170,9 @@ def _connector_secrets(connector: Connector) -> tuple[str, ...]:
         for key, value in credentials_info.items():
             if isinstance(value, str) and any(marker in key.lower() for marker in ("key", "secret", "token")):
                 values.append(value)
+    dsn = getattr(connector, "dsn", None)
+    if isinstance(dsn, str):
+        values.append(dsn)
     return tuple(values)
 
 

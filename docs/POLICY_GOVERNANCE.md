@@ -35,3 +35,5 @@ An active exception requests a later expiry through:
 Approval requires an administrator or delegated exception approver. Outside development mode, the requester and approver must differ. The current expiry remains authoritative until approval succeeds.
 
 Policy simulation evaluates lifecycle, active bundles, and active exceptions without creating an enforcement audit.
+
+Bundle submission and exception renewal also create unified governance review tasks. Approval completes the corresponding task without replacing existing delegation and separation-of-duty checks. See [Governance operations](GOVERNANCE_OPERATIONS.md).

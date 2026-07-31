@@ -138,6 +138,7 @@ class ConnectorJobRequest(BaseModel):
     region: str | None = None
     prefix: str = ""
     impersonate_user: str | None = None
+    schemas: list[str] = Field(default_factory=list, max_length=100)
 
 
 class ClassificationReviewResolution(BaseModel):
@@ -214,7 +215,9 @@ class EvidenceOut(BaseModel):
 
 
 class ConnectorScheduleCreate(BaseModel):
-    connector_type: str = Field(pattern="^(aws-s3|google-drive|github|gitlab|sharepoint)$")
+    connector_type: str = Field(
+        pattern="^(aws-s3|google-drive|github|gitlab|sharepoint|postgresql)$"
+    )
     account: str = Field(min_length=1, max_length=240)
     schedule_type: str = Field(default="interval", pattern="^(interval|cron)$")
     interval_seconds: int = Field(default=3600, ge=60, le=604800)
@@ -231,6 +234,7 @@ class ConnectorScheduleCreate(BaseModel):
     region: str | None = None
     prefix: str = ""
     impersonate_user: str | None = None
+    schemas: list[str] = Field(default_factory=list, max_length=100)
 
 
 class ConnectorScheduleUpdate(BaseModel):
@@ -298,7 +302,91 @@ class IntegrationReplayRequest(BaseModel):
 class IntegrationEndpointCreate(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     mode: str = Field(default="observe", pattern="^(observe|enforce)$")
+    event_format: str = Field(
+        default="native",
+        pattern="^(native|cloudevents|cef|splunk-hec)$",
+    )
     url: str = Field(min_length=8, max_length=2048)
     secret_ref: str | None = Field(default=None, pattern=r"^(env|file):.+$")
     events: list[str] = Field(default_factory=lambda: ["policy.decision"], min_length=1, max_length=50)
     enabled: bool = True
+
+
+class ServiceAccountCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    description: str = Field(default="", max_length=2000)
+    owner: str = Field(min_length=1, max_length=320)
+    role: str = Field(default="read-only", min_length=1, max_length=80)
+    credential_days: int = Field(default=90, ge=1, le=365)
+
+
+class ServiceAccountRotate(BaseModel):
+    credential_days: int = Field(default=90, ge=1, le=365)
+    grace_hours: int = Field(default=24, ge=0, le=168)
+
+
+class GovernanceTaskAssign(BaseModel):
+    assigned_to: str = Field(min_length=1, max_length=320)
+
+
+class OwnershipCampaignCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    description: str = Field(default="", max_length=2000)
+    scope: dict = Field(default_factory=dict)
+    due_at: datetime
+
+
+class OwnershipAttestation(BaseModel):
+    confirmed: bool
+    owner: str | None = Field(default=None, min_length=1, max_length=320)
+    note: str = Field(default="", max_length=2000)
+    remediation_action: str | None = Field(default=None, max_length=2000)
+    remediation_due_at: datetime | None = None
+
+
+class OwnershipRemediationUpdate(BaseModel):
+    action: str = Field(min_length=3, max_length=2000)
+    due_at: datetime
+
+
+class GraphExportCreate(BaseModel):
+    format: str = Field(default="json", pattern="^(json|csv|graphml)$")
+    relationships: list[str] = Field(default_factory=list, max_length=100)
+    sink_uri: str | None = Field(default=None, max_length=2048)
+    max_edges: int = Field(default=250_000, ge=1, le=1_000_000)
+
+
+class OwnershipCampaignScheduleCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    description: str = Field(default="", max_length=2000)
+    scope: dict = Field(default_factory=dict)
+    due_days: int = Field(default=14, ge=1, le=365)
+    max_assets: int = Field(default=10_000, ge=1, le=100_000)
+    schedule_type: str = Field(default="interval", pattern="^(interval|cron)$")
+    interval_seconds: int = Field(default=604_800, ge=60, le=604_800)
+    cron_expression: str | None = Field(default=None, min_length=9, max_length=120)
+    timezone: str = Field(default="UTC", min_length=1, max_length=120)
+    maintenance_windows: list[dict] = Field(default_factory=list, max_length=20)
+    notification_endpoint_ids: list[str] = Field(default_factory=list, max_length=50)
+    enabled: bool = True
+
+
+class OwnershipCampaignScheduleUpdate(BaseModel):
+    enabled: bool | None = None
+    description: str | None = Field(default=None, max_length=2000)
+    scope: dict | None = None
+    due_days: int | None = Field(default=None, ge=1, le=365)
+    max_assets: int | None = Field(default=None, ge=1, le=100_000)
+    schedule_type: str | None = Field(default=None, pattern="^(interval|cron)$")
+    interval_seconds: int | None = Field(default=None, ge=60, le=604_800)
+    cron_expression: str | None = Field(default=None, min_length=9, max_length=120)
+    timezone: str | None = Field(default=None, min_length=1, max_length=120)
+    maintenance_windows: list[dict] | None = Field(default=None, max_length=20)
+    notification_endpoint_ids: list[str] | None = Field(default=None, max_length=50)
+    next_run_at: datetime | None = None
+
+
+class GovernanceEvidencePackageCreate(BaseModel):
+    days: int = Field(default=30, ge=1, le=366)
+    categories: list[str] = Field(default_factory=list, max_length=20)
+    max_records: int = Field(default=10_000, ge=1, le=100_000)

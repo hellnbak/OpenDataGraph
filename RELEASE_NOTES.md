@@ -1,64 +1,69 @@
-# OpenDataGraph v1.4.0
+# OpenDataGraph v1.6.0
 
-OpenDataGraph v1.4 hardens continuous operation and governed recovery. It adds calendar-aware scheduling, identity lifecycle workflows, integration dead letters, delegated policy governance, evidence disposition approval, and explainable graph export.
+OpenDataGraph v1.6 adds ecosystem and scale controls: recurring ownership campaigns, short-lived workload federation, pluggable governed export sinks, governance evidence packages, PostgreSQL catalog coverage, and larger-estate qualification tooling.
 
-All v1.1, v1.2, and v1.3 capabilities remain part of the platform. The README keeps cumulative platform capabilities separate from release-specific additions.
+All v1.1 through v1.5 capabilities remain part of the platform. The README lists cumulative platform capabilities separately from release-specific additions.
 
-## Schedule calendars
+## Ownership automation
 
-Connector schedules support fixed intervals or five-field cron expressions. Cron evaluation uses an IANA time zone and stores the resulting run time in UTC. Recurring maintenance windows use local weekday and `HH:MM` boundaries; eligible runs skip those windows. Existing interval schedules continue to run unchanged.
+Data owners can schedule bounded ownership campaigns on fixed intervals or five-field cron calendars with IANA time zones and maintenance windows. Each due occurrence enqueues an idempotent `ownership.campaign.launch` job that creates one campaign snapshot with a configured due period and asset limit.
 
-## Identity lifecycle
+Schedules can target selected enabled integration endpoints. Campaign launch, remediation-required, and completion events also support ordinary event subscriptions.
 
-OIDC providers may use a configured HTTPS JWKS URL or same-host OpenID Connect discovery. Discovery documents are bounded, issuer-checked, JWKS-host checked, and cached for a configurable period.
+## Workload identity federation
 
-SCIM adds bounded Bulk requests with sequential `bulkId` reference resolution and partial error responses. Disabling or deleting a SCIM user creates a durable deprovisioning workflow. The worker deactivates the user, removes group memberships, records completion, and emits an optional integration event. SCIM credentials remain bound to one tenant and no tenant header is accepted.
+External automation can authenticate with `X-Workload-Identity-Token`. Each configured provider fixes the tenant and maximum platform role; caller claims cannot elevate either boundary. Tokens require asymmetric signature, exact issuer and audience, expiry and issued-at claims, a valid subject, and a configured lifetime of no more than one hour.
 
-## Integration recovery
+Workload tokens are validated per request and never stored. Existing API keys, human OIDC bearer tokens, and application-managed service accounts remain available.
 
-Webhook deliveries that exhaust worker retries enter `dead-letter` state. The delivery dashboard summarizes tenant-wide and endpoint-level success, failure, and dead-letter counts. Administrators may replay only failed or dead-letter deliveries; the new delivery records its origin, operator, and reason.
+## Export sink adapters
 
-Downstream receivers must continue deduplicating by `X-OpenDataGraph-Delivery`.
+Asynchronous graph exports now dispatch through a sink registry. Existing allowlisted S3 sinks remain compatible. HTTPS sinks require an exact host allowlist, reject credentials, query parameters, fragments, and redirects, and read a mounted short-lived bearer token only when the worker pushes an export.
 
-## Policy governance
+HTTPS sinks are push-only and cannot be downloaded through OpenDataGraph. Local and S3-backed export artifacts remain integrity-checkable and retrievable.
 
-Policy bundle diffs report added, removed, and field-level changed policies. Administrators can delegate bundle or exception-renewal approval to a named tenant identity, optionally limited to one bundle name and always bounded by expiry.
+## Governance analytics and evidence packages
 
-Active policy exceptions can request a later expiry. Approval requires an administrator or delegated approver and a different identity from the requester outside development mode.
+The governance analytics API reports review aging and SLA compliance, ownership remediation posture, evidence and disposition activity, service-account credential posture, and policy decision counts.
 
-## Evidence disposition
+Auditors can enqueue metadata-only governance evidence packages for a bounded time window and record limit. Packages can include review, ownership, evidence-integrity, policy-bundle, service-account, and graph-export metadata. They exclude evidence object bytes, policy definitions, governance details, connector secrets, prompts, and responses. Packages are stored locally or in S3-compatible storage with SHA-256 integrity.
 
-Evidence records track object-lock verification state. Local storage reports object lock as not applicable. S3 verification reads object retention and legal-hold state without retrieving object content.
+## PostgreSQL catalog connector
 
-Data owners can request evidence disposition. An independent administrator approves or rejects the request; approval queues worker execution. The worker rechecks application legal hold and S3 object-lock state before deleting. `ODG_EVIDENCE_DISPOSITION_APPROVAL_REQUIRED=true` changes retention cleanup from direct deletion to pending disposition creation.
+The new queued and scheduled `postgresql` connector inventories visible tables and views through `information_schema` and `pg_catalog`. It records schema, table type, estimated rows, owner, and column count with opaque bounded pagination. It does not query table rows, infer public exposure, or claim a source modification timestamp.
 
-## Graph explanations and export
+Use a secret reference containing a PostgreSQL DSN. Grant only `CONNECT`, schema `USAGE`, and visibility required for approved catalog objects; data-table `SELECT` is not required.
 
-Composite tenant/source, tenant/target, and tenant/relationship indexes improve larger relational graph queries. The path endpoint returns bounded paths with a human-readable explanation for each step. Tenant graph edges can be exported as bounded JSON, CSV, or GraphML.
+## Scale qualification
+
+`python -m app.benchmark` now includes `local`, `postgres-small`, and `postgres-large` profiles. External database profiles require PostgreSQL and an explicit fixture-write acknowledgement, use a unique synthetic tenant, and remove their fixture rows after measurement.
+
+`python -m app.query_plans` captures read-only `EXPLAIN (FORMAT JSON)` output for catalog, graph, governance, and ownership queries. It never uses `ANALYZE`. Composite tenant/status/time indexes accompany the new migration.
+
+These tools provide comparative evidence, not certified capacity claims.
 
 ## Upgrade
 
 1. Stop API and worker processes.
-2. Create and verify database and evidence backups.
-3. Review cron, OIDC discovery, SCIM Bulk, disposition, integration replay, and graph export settings.
+2. Create and verify database, evidence, graph-export, and governance-package backups as applicable.
+3. Review workload identity providers, campaign schedules, notification destinations, export sink allowlists, mounted identity tokens, package storage, and PostgreSQL connector permissions.
 4. Run `alembic upgrade head`.
-5. Start the API and workers.
-6. Verify `/ready`, one cron schedule, OIDC discovery, SCIM deprovisioning, dead-letter replay, disposition approval, and tenant isolation.
+5. Start the API and workers from the same v1.6 image.
+6. Verify `/health`, `/ready`, the Alembic head, tenant isolation, one scheduled ownership launch, one short-lived workload token, one enabled export sink, one evidence package, and one bounded PostgreSQL catalog scan.
 
-Downgrades are not supported. Restore the verified pre-upgrade backup if rollback is required.
+Downgrades are not supported. Restore the verified pre-upgrade state if rollback is required.
 
 ## Compatibility and limitations
 
-- Existing interval schedules, direct scans, queued jobs, and v1.3 APIs remain available.
-- Cron supports five numeric fields with lists, ranges, and steps; named months and weekdays are not accepted.
-- OIDC discovery must use the configured issuer host. A different JWKS host must be explicitly listed in `jwks_allowed_hosts`.
-- SCIM Bulk processes operations sequentially and returns per-operation status; it is not an all-or-nothing transaction.
-- Identity deprovisioning removes OpenDataGraph SCIM group memberships and emits an event; approved downstream systems remain responsible for their own access revocation.
-- Integration delivery is at least once. Replay creates a new delivery ID and never mutates the original dead letter.
-- Object-lock verification depends on storage permissions and reports `unavailable` when state cannot be confirmed.
-- Graph path and export operations remain bounded relational queries rather than an external graph analytics engine.
-- PostgreSQL is recommended for shared, scheduled, and multi-worker deployments.
+- Existing APIs and v1.1 through v1.5 workflows remain available.
+- Ownership campaign schedules snapshot matching assets at launch; later assets require a later occurrence or campaign.
+- Scheduled campaign jobs fail safely when a scope matches no assets and follow normal bounded retry behavior.
+- Workload providers assign a fixed tenant and role. Dynamic tenant or role trust from workload claims is intentionally unsupported.
+- HTTPS export sinks require a mounted token under an approved secret-file root and do not follow redirects.
+- Governance packages contain governed metadata, not evidence object content or complete audit-source records.
+- PostgreSQL public exposure and modification timestamps are not inferred; metadata explicitly records those limits.
+- PostgreSQL benchmark profiles write synthetic fixtures and must run only against an approved isolated qualification database.
 
 ## License
 
-OpenDataGraph v1.4.0 is source-available under `FSL-1.1-ALv2`. The license permits internal use, non-commercial education and research, and qualifying professional services while prohibiting competing commercial products and services. This release becomes available under Apache License 2.0 on July 30, 2028. Earlier releases retain the terms distributed with those releases.
+OpenDataGraph v1.6.0 is source-available under `FSL-1.1-ALv2`. The license permits internal use, non-commercial education and research, and qualifying professional services while prohibiting competing commercial products and services. This release becomes available under Apache License 2.0 on July 31, 2028. Earlier releases retain the terms distributed with those releases.

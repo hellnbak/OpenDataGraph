@@ -10,7 +10,7 @@ from app.services.policy_engine import evaluate_policies, evaluate_policy_defini
 
 
 SENSITIVITY = {"Public": 0, "Internal": 1, "Confidential": 2, "Restricted": 3, "Unclassified": 2}
-POLICY_VERSION = "1.4.0"
+POLICY_VERSION = "1.6.0"
 
 
 def evaluate(

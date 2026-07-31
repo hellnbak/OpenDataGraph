@@ -1,6 +1,6 @@
 # Connectors
 
-OpenDataGraph v1.4 includes metadata-first adapters for AWS S3, Google Drive, GitHub, GitLab, and SharePoint / OneDrive.
+OpenDataGraph v1.6 includes metadata-first adapters for AWS S3, Google Drive, GitHub, GitLab, SharePoint / OneDrive, and PostgreSQL catalogs.
 
 All connectors normalize source records before tenant-scoped catalog ingestion. Runs record source, account, status, imported and updated counts, safe errors, timestamps, and opaque cursor progression.
 
@@ -21,12 +21,12 @@ Managed interval schedules enqueue the same durable jobs. Tenant/provider reques
 - Prefer short-lived workload identity.
 - Grant metadata read permissions only for approved sources.
 - Never place provider credentials in job payloads, examples, logs, evidence, or run errors.
-- Use `env:` or `file:` references for queued credentials.
+- Use `env:` or `file:` references for queued credentials, including PostgreSQL DSNs.
 - Restrict secret file roots and provider egress with `ODG_GITHUB_ALLOWED_HOSTS`, `ODG_GITLAB_ALLOWED_HOSTS`, and `ODG_SHAREPOINT_ALLOWED_HOSTS`.
 - Require HTTPS for provider endpoints and replayed URL cursors.
 
 ## Pagination
 
-Provider cursors remain opaque. AWS S3 continuation tokens, Google Drive page tokens, repository page numbers, and Microsoft Graph next or delta links are stored and replayed without interpretation.
+Provider cursors remain opaque. AWS S3 continuation tokens, Google Drive page tokens, repository page numbers, Microsoft Graph next or delta links, and PostgreSQL catalog positions are stored and replayed without interpretation.
 
-See [Connector SDK](CONNECTOR_SDK.md) and the provider guides under `docs/connectors/`.
+PostgreSQL catalog scans read `information_schema` and `pg_catalog` metadata only. They do not read relation content or infer public exposure. See [PostgreSQL connector](connectors/postgresql.md), [Connector SDK](CONNECTOR_SDK.md), and the provider guides under `docs/connectors/`.

@@ -5,7 +5,7 @@ from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, 
 from app.config import settings
 
 
-def test_initial_migration_creates_v14_schema(tmp_path, monkeypatch):
+def test_initial_migration_creates_v16_schema(tmp_path, monkeypatch):
     database = tmp_path / "migration.db"
     database_url = f"sqlite:///{database}"
     monkeypatch.setattr(settings, "database_url", database_url)
@@ -21,10 +21,19 @@ def test_initial_migration_creates_v14_schema(tmp_path, monkeypatch):
         "identity_deprovision_workflows",
         "integration_endpoints",
         "lineage_events",
+        "governance_review_tasks",
+        "graph_exports",
+        "governance_evidence_packages",
+        "ownership_assignments",
+        "ownership_campaigns",
+        "ownership_campaign_schedules",
         "policy_approver_delegations",
         "policy_bundles",
         "provider_rate_limits",
         "scim_resources",
+        "service_account_credentials",
+        "service_accounts",
+        "credential_rotations",
         "alembic_version",
     } <= set(inspector.get_table_names())
     assert "tenant_id" in {column["name"] for column in inspector.get_columns("data_assets")}
@@ -48,6 +57,27 @@ def test_initial_migration_creates_v14_schema(tmp_path, monkeypatch):
         "ix_graph_edges_tenant_target",
         "ix_graph_edges_tenant_relationship",
     } <= {index["name"] for index in inspector.get_indexes("graph_edges")}
+    assert "event_format" in {
+        column["name"] for column in inspector.get_columns("integration_endpoints")
+    }
+    assert "ix_integration_endpoints_event_format" in {
+        index["name"] for index in inspector.get_indexes("integration_endpoints")
+    }
+    assert "uq_service_credential_id" in {
+        constraint["name"]
+        for constraint in inspector.get_unique_constraints(
+            "service_account_credentials"
+        )
+    }
+    assert {
+        "source_schedule_id",
+        "notification_endpoint_ids_json",
+    } <= {
+        column["name"] for column in inspector.get_columns("ownership_campaigns")
+    }
+    assert "ix_governance_review_tasks_tenant_status_due" in {
+        index["name"] for index in inspector.get_indexes("governance_review_tasks")
+    }
 
 
 def test_migration_upgrades_v11_global_uniqueness(tmp_path, monkeypatch):
@@ -140,3 +170,100 @@ def test_v13_migration_adds_evidence_governance_to_v12_database(tmp_path, monkey
         column["name"] for column in inspector.get_columns("evidence_records")
     }
     assert "connector_schedules" in inspector.get_table_names()
+
+
+def test_v15_migration_preserves_native_integration_format(tmp_path, monkeypatch):
+    database = tmp_path / "v14.db"
+    database_url = f"sqlite:///{database}"
+    engine = create_engine(database_url)
+    monkeypatch.setattr(settings, "database_url", database_url)
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", database_url)
+    command.upgrade(config, "20260730_0003")
+    with engine.begin() as connection:
+        connection.execute(text("DROP INDEX ix_integration_endpoints_event_format"))
+        connection.execute(
+            text("ALTER TABLE integration_endpoints DROP COLUMN event_format")
+        )
+        for table_name in (
+            "service_accounts",
+            "service_account_credentials",
+            "credential_rotations",
+            "governance_review_tasks",
+            "ownership_campaigns",
+            "ownership_assignments",
+            "graph_exports",
+        ):
+            connection.execute(text(f"DROP TABLE {table_name}"))
+        connection.execute(
+            text(
+                "INSERT INTO integration_endpoints "
+                "(tenant_id, endpoint_id, name, endpoint_type, mode, url, "
+                "events_json, enabled, created_by, created_at, updated_at) "
+                "VALUES ('tenant-a', 'endpoint-1', 'existing', 'webhook', "
+                "'observe', 'https://alerts.example.test/events', '[]', 1, "
+                "'admin', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            )
+        )
+
+    command.upgrade(config, "head")
+    inspector = inspect(engine)
+    assert {
+        "service_accounts",
+        "governance_review_tasks",
+        "ownership_campaigns",
+        "graph_exports",
+    } <= set(inspector.get_table_names())
+    with engine.connect() as connection:
+        event_format = connection.scalar(
+            text(
+                "SELECT event_format FROM integration_endpoints "
+                "WHERE endpoint_id = 'endpoint-1'"
+            )
+        )
+    assert event_format == "native"
+
+
+def test_v16_migration_upgrades_v15_schema(tmp_path, monkeypatch):
+    database = tmp_path / "v15.db"
+    database_url = f"sqlite:///{database}"
+    engine = create_engine(database_url)
+    monkeypatch.setattr(settings, "database_url", database_url)
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", database_url)
+    command.upgrade(config, "20260730_0004")
+    with engine.begin() as connection:
+        connection.execute(text("DROP TABLE ownership_campaign_schedules"))
+        connection.execute(text("DROP TABLE governance_evidence_packages"))
+        connection.execute(text("DROP INDEX ix_ownership_campaigns_source_schedule_id"))
+        connection.execute(text("ALTER TABLE ownership_campaigns DROP COLUMN source_schedule_id"))
+        connection.execute(
+            text(
+                "ALTER TABLE ownership_campaigns "
+                "DROP COLUMN notification_endpoint_ids_json"
+            )
+        )
+        for index_name in (
+            "ix_service_account_credentials_tenant_status_expires",
+            "ix_governance_review_tasks_tenant_status_due",
+            "ix_ownership_campaigns_tenant_status_due",
+            "ix_ownership_assignments_tenant_campaign_status",
+            "ix_graph_exports_tenant_status_created",
+        ):
+            connection.execute(text(f"DROP INDEX {index_name}"))
+
+    command.upgrade(config, "head")
+    inspector = inspect(engine)
+    assert {
+        "ownership_campaign_schedules",
+        "governance_evidence_packages",
+    } <= set(inspector.get_table_names())
+    assert {
+        "source_schedule_id",
+        "notification_endpoint_ids_json",
+    } <= {
+        column["name"] for column in inspector.get_columns("ownership_campaigns")
+    }
+    assert "ix_graph_exports_tenant_status_created" in {
+        index["name"] for index in inspector.get_indexes("graph_exports")
+    }

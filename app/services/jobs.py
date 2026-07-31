@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -18,13 +18,21 @@ from app.services.evidence import (
     mark_disposition_error,
     purge_expired_evidence,
 )
+from app.services.evidence_packages import (
+    execute_evidence_package,
+    mark_evidence_package_error,
+)
+from app.services.governance import notify_overdue_reviews
+from app.services.graph_exports import execute_graph_export, mark_graph_export_error
 from app.services.identity import execute_deprovision, mark_deprovision_error
 from app.services.integrations import deliver_integration, mark_delivery_dead_letter
+from app.services.ownership import execute_scheduled_campaign
 from app.services.schedules import ProviderRateLimitExceeded, provider_request_guard
 from app.services.search import reindex_tenant
 from connectors.gdrive import GoogleDriveConnector
 from connectors.github import GitHubConnector
 from connectors.gitlab import GitLabConnector
+from connectors.postgresql import PostgreSQLConnector
 from connectors.s3 import S3Connector
 from connectors.security import validate_https_url
 from connectors.sharepoint import SharePointConnector
@@ -37,8 +45,19 @@ SUPPORTED_JOB_TYPES = {
     "evidence.disposition",
     "identity.deprovision",
     "integration.deliver",
+    "governance.sla-notify",
+    "graph.export",
+    "ownership.campaign.launch",
+    "governance.evidence-package",
 }
-SUPPORTED_CONNECTORS = {"aws-s3", "google-drive", "github", "gitlab", "sharepoint"}
+SUPPORTED_CONNECTORS = {
+    "aws-s3",
+    "google-drive",
+    "github",
+    "gitlab",
+    "sharepoint",
+    "postgresql",
+}
 
 
 def enqueue_job(
@@ -136,6 +155,31 @@ def execute_job(db: Session, job: BackgroundJob) -> None:
             )
         elif job.job_type == "integration.deliver":
             result = deliver_integration(db, job.tenant_id, payload["delivery_id"])
+        elif job.job_type == "governance.sla-notify":
+            result = notify_overdue_reviews(
+                db,
+                job.tenant_id,
+                int(payload.get("limit", 500)),
+            )
+        elif job.job_type == "graph.export":
+            result = execute_graph_export(
+                db,
+                job.tenant_id,
+                payload["export_id"],
+            )
+        elif job.job_type == "ownership.campaign.launch":
+            result = execute_scheduled_campaign(
+                db,
+                job.tenant_id,
+                payload["schedule_id"],
+                payload["scheduled_for"],
+            )
+        elif job.job_type == "governance.evidence-package":
+            result = execute_evidence_package(
+                db,
+                job.tenant_id,
+                payload["package_id"],
+            )
         else:
             raise RuntimeError(f"Unsupported job type: {job.job_type}")
         db.refresh(job)
@@ -180,6 +224,22 @@ def execute_job(db: Session, job: BackgroundJob) -> None:
                 db,
                 job.tenant_id,
                 payload["disposition_id"],
+                job.error,
+            )
+        elif job.job_type == "graph.export" and payload.get("export_id"):
+            mark_graph_export_error(
+                db,
+                job.tenant_id,
+                payload["export_id"],
+                job.error,
+            )
+        elif job.job_type == "governance.evidence-package" and payload.get(
+            "package_id"
+        ):
+            mark_evidence_package_error(
+                db,
+                job.tenant_id,
+                payload["package_id"],
                 job.error,
             )
         db.commit()
@@ -270,6 +330,19 @@ def validate_job_payload(job_type: str, payload: dict) -> None:
             )
         elif connector_type == "sharepoint" and payload.get("cursor"):
             validate_https_url(payload["cursor"], settings.sharepoint_allowed_hosts)
+        elif connector_type == "postgresql":
+            schemas = payload.get("schemas", [])
+            if (
+                not isinstance(schemas, list)
+                or len(schemas) > 100
+                or any(
+                    not isinstance(schema, str)
+                    or not schema.strip()
+                    or len(schema) > 63
+                    for schema in schemas
+                )
+            ):
+                raise ValueError("PostgreSQL connector schemas are invalid")
     elif job_type == "integration.deliver":
         if set(payload) != {"delivery_id"} or not isinstance(payload.get("delivery_id"), str):
             raise ValueError("Integration delivery jobs require only delivery_id")
@@ -279,6 +352,33 @@ def validate_job_payload(job_type: str, payload: dict) -> None:
     elif job_type == "evidence.disposition":
         if set(payload) != {"disposition_id"} or not isinstance(payload.get("disposition_id"), str):
             raise ValueError("Evidence disposition jobs require only disposition_id")
+    elif job_type == "graph.export":
+        if set(payload) != {"export_id"} or not isinstance(payload.get("export_id"), str):
+            raise ValueError("Graph export jobs require only export_id")
+    elif job_type == "governance.sla-notify":
+        if set(payload) != {"limit"} or not isinstance(payload.get("limit"), int):
+            raise ValueError("Governance notification jobs require only an integer limit")
+        if not 1 <= payload["limit"] <= 5000:
+            raise ValueError("Governance notification job limit must be 1 to 5000")
+    elif job_type == "ownership.campaign.launch":
+        if set(payload) != {"schedule_id", "scheduled_for"}:
+            raise ValueError(
+                "Ownership campaign launch jobs require schedule_id and scheduled_for"
+            )
+        if not isinstance(payload.get("schedule_id"), str):
+            raise ValueError("Ownership campaign schedule_id is invalid")
+        try:
+            datetime.fromisoformat(payload.get("scheduled_for", ""))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Ownership campaign scheduled_for is invalid") from exc
+    elif job_type == "governance.evidence-package":
+        if set(payload) != {"package_id"} or not isinstance(
+            payload.get("package_id"),
+            str,
+        ):
+            raise ValueError(
+                "Governance evidence package jobs require only package_id"
+            )
 
 
 def _build_connector(payload: dict, db: Session, tenant_id: str):
@@ -331,6 +431,13 @@ def _build_connector(payload: dict, db: Session, tenant_id: str):
             drive_id,
             secret or "",
             allowed_hosts=settings.sharepoint_allowed_hosts,
+            before_request=guard,
+        )
+    if connector_type == "postgresql":
+        return PostgreSQLConnector(
+            account,
+            secret or "",
+            schemas=payload.get("schemas", []),
             before_request=guard,
         )
     raise ValueError(f"Unsupported connector type: {connector_type}")

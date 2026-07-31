@@ -42,13 +42,18 @@ services:
       ODG_AUTO_SEED_DEMO: ${ODG_AUTO_SEED_DEMO:-true}
       ODG_DEFAULT_TENANT: ${ODG_DEFAULT_TENANT:-default}
       ODG_AUTH_DISABLED: ${ODG_AUTH_DISABLED:-true}
-      ODG_API_KEYS_JSON: ${ODG_API_KEYS_JSON:-"{}"}
-      ODG_OIDC_PROVIDERS_JSON: ${ODG_OIDC_PROVIDERS_JSON:-"{}"}
+      ODG_API_KEYS_JSON:
+      ODG_OIDC_PROVIDERS_JSON:
+      ODG_WORKLOAD_IDENTITY_PROVIDERS_JSON:
+      ODG_WORKLOAD_IDENTITY_MAX_TOKEN_SECONDS: ${ODG_WORKLOAD_IDENTITY_MAX_TOKEN_SECONDS:-3600}
       ODG_OIDC_DISCOVERY_CACHE_SECONDS: ${ODG_OIDC_DISCOVERY_CACHE_SECONDS:-3600}
       ODG_OIDC_HTTP_TIMEOUT_SECONDS: ${ODG_OIDC_HTTP_TIMEOUT_SECONDS:-5}
       ODG_SCIM_BEARER_TOKEN: ${ODG_SCIM_BEARER_TOKEN:-}
-      ODG_SCIM_TOKENS_JSON: ${ODG_SCIM_TOKENS_JSON:-"{}"}
+      ODG_SCIM_TOKENS_JSON:
       ODG_SCIM_BULK_MAX_OPERATIONS: ${ODG_SCIM_BULK_MAX_OPERATIONS:-100}
+      ODG_SERVICE_ACCOUNT_CREDENTIAL_DAYS: ${ODG_SERVICE_ACCOUNT_CREDENTIAL_DAYS:-90}
+      ODG_SERVICE_ACCOUNT_ROTATION_GRACE_HOURS: ${ODG_SERVICE_ACCOUNT_ROTATION_GRACE_HOURS:-24}
+      ODG_SERVICE_ACCOUNT_STALE_DAYS: ${ODG_SERVICE_ACCOUNT_STALE_DAYS:-30}
       ODG_CLASSIFICATION_MODE: ${ODG_CLASSIFICATION_MODE:-hybrid}
       ODG_OLLAMA_URL: ${ODG_OLLAMA_URL:-http://host.docker.internal:11434}
       ODG_OLLAMA_MODEL: ${ODG_OLLAMA_MODEL:-qwen2.5:3b}
@@ -68,6 +73,23 @@ services:
       ODG_WORKER_SCHEDULE_BATCH_SIZE: ${ODG_WORKER_SCHEDULE_BATCH_SIZE:-50}
       ODG_GRAPH_MAX_DEPTH: ${ODG_GRAPH_MAX_DEPTH:-5}
       ODG_GRAPH_MAX_EXPORT_EDGES: ${ODG_GRAPH_MAX_EXPORT_EDGES:-10000}
+      ODG_GRAPH_ASYNC_EXPORT_MAX_EDGES: ${ODG_GRAPH_ASYNC_EXPORT_MAX_EDGES:-250000}
+      ODG_GRAPH_EXPORT_MAX_BYTES: ${ODG_GRAPH_EXPORT_MAX_BYTES:-104857600}
+      ODG_GRAPH_EXPORT_BACKEND: local
+      ODG_GRAPH_EXPORT_LOCAL_DIRECTORY: /var/lib/opendatagraph/exports
+      ODG_GRAPH_EXPORT_PREFIX: ${ODG_GRAPH_EXPORT_PREFIX:-graph-exports}
+      ODG_GRAPH_EXPORT_ENDPOINT_URL: ${ODG_GRAPH_EXPORT_ENDPOINT_URL:-}
+      ODG_GRAPH_EXPORT_REGION: ${ODG_GRAPH_EXPORT_REGION:-}
+      ODG_GRAPH_EXPORT_ALLOWED_SINK_BUCKETS: ${ODG_GRAPH_EXPORT_ALLOWED_SINK_BUCKETS:-}
+      ODG_GRAPH_EXPORT_HTTPS_ALLOWED_HOSTS: ${ODG_GRAPH_EXPORT_HTTPS_ALLOWED_HOSTS:-}
+      ODG_GRAPH_EXPORT_HTTPS_IDENTITY_TOKEN_FILE: ${ODG_GRAPH_EXPORT_HTTPS_IDENTITY_TOKEN_FILE:-}
+      ODG_GRAPH_EXPORT_HTTPS_TIMEOUT_SECONDS: ${ODG_GRAPH_EXPORT_HTTPS_TIMEOUT_SECONDS:-30}
+      ODG_GOVERNANCE_DEFAULT_SLA_HOURS: ${ODG_GOVERNANCE_DEFAULT_SLA_HOURS:-48}
+      ODG_GOVERNANCE_DUE_SOON_HOURS: ${ODG_GOVERNANCE_DUE_SOON_HOURS:-24}
+      ODG_GOVERNANCE_PACKAGE_BACKEND: local
+      ODG_GOVERNANCE_PACKAGE_LOCAL_DIRECTORY: /var/lib/opendatagraph/governance-packages
+      ODG_GOVERNANCE_PACKAGE_PREFIX: ${ODG_GOVERNANCE_PACKAGE_PREFIX:-governance-packages}
+      ODG_GOVERNANCE_PACKAGE_MAX_BYTES: ${ODG_GOVERNANCE_PACKAGE_MAX_BYTES:-104857600}
       ODG_LOG_FORMAT: json
       ODG_METRICS_ENABLED: "true"
 
@@ -88,6 +110,8 @@ services:
       retries: 20
     volumes:
       - evidence-data:/var/lib/opendatagraph/evidence
+      - graph-export-data:/var/lib/opendatagraph/exports
+      - governance-package-data:/var/lib/opendatagraph/governance-packages
       - ~/.aws:/home/opendatagraph/.aws:ro
       - ./secrets:/run/secrets:ro
     extra_hosts:
@@ -105,6 +129,8 @@ services:
     restart: unless-stopped
     volumes:
       - evidence-data:/var/lib/opendatagraph/evidence
+      - graph-export-data:/var/lib/opendatagraph/exports
+      - governance-package-data:/var/lib/opendatagraph/governance-packages
       - ~/.aws:/home/opendatagraph/.aws:ro
       - ./secrets:/run/secrets:ro
     extra_hosts:
@@ -112,5 +138,7 @@ services:
 
 volumes:
   evidence-data:
+  graph-export-data:
+  governance-package-data:
   opensearch-data:
   postgres-data:

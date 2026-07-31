@@ -32,6 +32,7 @@ from app.schemas import (
 )
 from app.services.evidence import delete_evidence
 from app.services.graph import ingest_openlineage_event, query_graph
+from app.services.governance import complete_review_task, create_review_task
 from app.services.identity import (
     create_resource,
     filter_resources,
@@ -331,6 +332,16 @@ def submit_policy_bundle(
     bundle.submitted_at = utc_now()
     db.commit()
     db.refresh(bundle)
+    create_review_task(
+        db,
+        principal.tenant_id,
+        "policy-approval",
+        bundle.bundle_id,
+        f"Approve policy bundle {bundle.name} v{bundle.version}",
+        principal.subject,
+        {"bundle_name": bundle.name, "bundle_version": bundle.version},
+        priority="high",
+    )
     return _policy_bundle_response(bundle)
 
 
@@ -354,6 +365,14 @@ def approve_policy_bundle(
     bundle.approved_at = utc_now()
     db.commit()
     db.refresh(bundle)
+    complete_review_task(
+        db,
+        principal.tenant_id,
+        "policy-approval",
+        bundle.bundle_id,
+        principal.subject,
+        "approved",
+    )
     return _policy_bundle_response(bundle)
 
 
@@ -470,6 +489,7 @@ def create_integration_endpoint(
             req.events,
             req.enabled,
             principal.subject,
+            req.event_format,
         )
     except IntegrityError as exc:
         db.rollback()
@@ -881,6 +901,7 @@ def _integration_endpoint_response(endpoint: IntegrationEndpoint) -> dict:
         "name": endpoint.name,
         "endpoint_type": endpoint.endpoint_type,
         "mode": endpoint.mode,
+        "event_format": endpoint.event_format,
         "url": endpoint.url,
         "events": json.loads(endpoint.events_json or "[]"),
         "enabled": endpoint.enabled,

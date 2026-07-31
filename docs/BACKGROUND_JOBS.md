@@ -1,6 +1,6 @@
 # Background Jobs
 
-OpenDataGraph v1.4 stores durable jobs in the primary database and executes them with `python -m app.worker`.
+OpenDataGraph v1.6 stores durable jobs in the primary database and executes them with `python -m app.worker`.
 
 ## Supported jobs
 
@@ -10,6 +10,10 @@ OpenDataGraph v1.4 stores durable jobs in the primary database and executes them
 - `evidence.disposition`
 - `identity.deprovision`
 - `integration.deliver`
+- `governance.sla-notify`
+- `graph.export`
+- `ownership.campaign.launch`
+- `governance.evidence-package`
 
 Submit connector work through:
 
@@ -17,9 +21,9 @@ Submit connector work through:
 POST /api/v1/connectors/{connector_type}/jobs
 ```
 
-Supported queued connector types are `aws-s3`, `google-drive`, `github`, `gitlab`, and `sharepoint`.
+Supported queued connector types are `aws-s3`, `google-drive`, `github`, `gitlab`, `sharepoint`, and `postgresql`.
 
-Workers also claim due interval or cron connector schedules before selecting the next pending job. See [Scheduling and provider budgets](SCHEDULING_AND_RATE_LIMITS.md).
+Workers also claim due interval or cron connector and ownership schedules before selecting the next pending job. See [Scheduling and provider budgets](SCHEDULING_AND_RATE_LIMITS.md).
 
 ## Credentials
 
@@ -31,7 +35,9 @@ The file must be within `ODG_SECRET_FILE_ROOTS`. The worker resolves the value o
 
 Jobs move through `pending`, `running`, `completed`, `failed`, or `cancelled`. Failed jobs retry with bounded exponential backoff until `max_attempts`. Worker startup recovers claims older than `ODG_WORKER_CLAIM_TIMEOUT_SECONDS`.
 
-Cancellation is cooperative. A pending job cancels immediately; a running connector page or webhook request completes before final state is observed. Provider-budget exhaustion returns a connector job to pending until its shared window resets. Integration delivery that exhausts attempts becomes a dead letter. Evidence disposition and identity deprovisioning keep durable governance state separate from job state.
+Cancellation is cooperative. A pending job cancels immediately; a running connector page, webhook request, governance notification batch, campaign launch, package generation, or graph serialization completes before final state is observed. Provider-budget exhaustion returns a connector job to pending until its shared window resets. Integration delivery that exhausts attempts becomes a dead letter. Evidence disposition, identity deprovisioning, governance review and package, ownership, and graph export records keep durable domain state separate from job state.
+
+Governance notification payloads contain only a bounded limit. Graph export and governance package payloads contain only a tenant-scoped record identifier. Ownership launch payloads contain only the schedule identifier and stable occurrence timestamp. Configuration, filters, sinks, and bounds are persisted on tenant-scoped domain records.
 
 ## APIs
 

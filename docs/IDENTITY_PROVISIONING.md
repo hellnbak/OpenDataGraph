@@ -67,3 +67,5 @@ Disabling a user through replace or patch, or deleting a user, creates a durable
 4. optionally emits `identity.deprovisioned` to subscribed integrations.
 
 `GET /api/v1/identity/deprovisioning` exposes workflow state to auditors. Downstream identity and application systems remain responsible for revoking their own access when they receive the event.
+
+Application automation identities are managed separately from SCIM users and OIDC principals. See [Service accounts](SERVICE_ACCOUNTS.md).

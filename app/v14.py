@@ -36,6 +36,7 @@ from app.services.evidence import (
     verify_object_lock,
 )
 from app.services.graph import explain_paths, export_graph_edges
+from app.services.governance import complete_review_task, create_review_task
 from app.services.identity import (
     create_resource,
     deprovision_response,
@@ -245,6 +246,16 @@ def request_policy_exception_renewal(
         )
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
+    create_review_task(
+        db,
+        principal.tenant_id,
+        "policy-exception-renewal",
+        exception.exception_id,
+        f"Review policy exception renewal {exception.exception_id}",
+        principal.subject,
+        {"requested_until": exception.renewal_requested_until.isoformat()},
+        priority="high",
+    )
     return _exception_renewal_response(exception)
 
 
@@ -268,6 +279,14 @@ def approve_policy_exception_renewal(
         exception = approve_exception_renewal(db, exception, principal.subject)
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
+    complete_review_task(
+        db,
+        principal.tenant_id,
+        "policy-exception-renewal",
+        exception.exception_id,
+        principal.subject,
+        "approved",
+    )
     return _exception_renewal_response(exception)
 
 
@@ -303,6 +322,16 @@ def request_evidence_disposition(
         )
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
+    create_review_task(
+        db,
+        principal.tenant_id,
+        "evidence-disposition",
+        disposition.disposition_id,
+        f"Review evidence disposition {disposition.disposition_id}",
+        principal.subject,
+        {"evidence_id": evidence_id, "action": disposition.action},
+        priority="critical" if record.legal_hold else "high",
+    )
     return disposition_response(disposition)
 
 
@@ -337,6 +366,14 @@ def approve_evidence_disposition(
         disposition = approve_disposition(db, disposition, principal.subject)
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
+    complete_review_task(
+        db,
+        principal.tenant_id,
+        "evidence-disposition",
+        disposition.disposition_id,
+        principal.subject,
+        "approved",
+    )
     job = enqueue_job(
         db,
         tenant_id=principal.tenant_id,
@@ -361,6 +398,14 @@ def reject_evidence_disposition(
         disposition = reject_disposition(db, disposition, principal.subject)
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
+    complete_review_task(
+        db,
+        principal.tenant_id,
+        "evidence-disposition",
+        disposition.disposition_id,
+        principal.subject,
+        "rejected",
+    )
     return disposition_response(disposition)
 
 

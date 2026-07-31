@@ -7,6 +7,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 COPY . .
 RUN useradd --uid 10001 --create-home opendatagraph \
     && mkdir -p /var/lib/opendatagraph/evidence \
+    && mkdir -p /var/lib/opendatagraph/exports \
+    && mkdir -p /var/lib/opendatagraph/governance-packages \
     && chown -R opendatagraph:opendatagraph /app /var/lib/opendatagraph
 USER 10001
 EXPOSE 8080
